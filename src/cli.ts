@@ -6,7 +6,6 @@
  * via createWikiCompiler() — see `llmwiki init` to generate a starter config.
  */
 
-import "dotenv/config";
 import { createRequire } from "module";
 import { Command } from "commander";
 import initCommand from "./commands/init.js";
