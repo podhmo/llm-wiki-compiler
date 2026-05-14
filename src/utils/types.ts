@@ -209,7 +209,7 @@ export interface QueryResult {
 }
 
 /** Source type tag persisted in frontmatter to describe the ingest origin. */
-export type SourceType = "web" | "file" | "image" | "pdf" | "transcript";
+export type SourceType = "file";
 
 /** Structured result returned by the ingest pipeline. */
 export interface IngestResult {
