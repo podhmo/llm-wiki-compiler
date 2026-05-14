@@ -6,18 +6,18 @@
  * markers written by the LLM stub are faithfully preserved in the wiki page
  * body written to disk, and that both colon and hash forms survive unaltered.
  *
- * Strategy: stub AnthropicProvider so no real API calls are made.
+ * Strategy: stub LLMAdapter so no real API calls are made.
  *   - toolCall() returns minimal extraction JSON marking the concept as new.
  *   - complete() returns a page body that includes claim-level citation markers.
  * The compiled output is then read back and inspected for marker presence.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFile } from "fs/promises";
 import path from "path";
 import { compileAndReport } from "../src/compiler/index.js";
 import { parseFrontmatter, extractClaimCitations } from "../src/utils/markdown.js";
-import { AnthropicProvider } from "../src/providers/anthropic.js";
+import type { LLMAdapter } from "../src/types/llm-adapter.js";
 import { useCompileProject } from "./fixtures/compile-project.js";
 
 // ---------------------------------------------------------------------------
@@ -40,17 +40,25 @@ function buildExtractionResponse(): string {
   });
 }
 
+/** Create a mock LLMAdapter that returns the given page body for completions. */
+function buildMockAdapter(pageBody: string): LLMAdapter {
+  return {
+    async complete(): Promise<string> {
+      return pageBody;
+    },
+    async toolCall(): Promise<string> {
+      return buildExtractionResponse();
+    },
+  };
+}
+
 /**
- * Stub the provider, run compile, and return the rendered page body.
+ * Stub the LLM adapter, run compile, and return the rendered page body.
  * Reduces per-test boilerplate for the compile+read pattern.
  */
 async function compileAndReadBody(root: string, stubBody: string): Promise<string> {
-  vi.spyOn(AnthropicProvider.prototype, "toolCall").mockResolvedValue(
-    buildExtractionResponse(),
-  );
-  vi.spyOn(AnthropicProvider.prototype, "complete").mockResolvedValue(stubBody);
-
-  await compileAndReport(root);
+  const llm = buildMockAdapter(stubBody);
+  await compileAndReport(root, {}, llm);
 
   const pagePath = path.join(root, "wiki", "concepts", "claim-topic.md");
   const content = await readFile(pagePath, "utf-8");

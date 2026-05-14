@@ -13,7 +13,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ingestSource } from "../commands/ingest.js";
 import { compileAndReport } from "../compiler/index.js";
-import { generateAnswer, selectPages } from "../commands/query.js";
+import { generateAnswer } from "../commands/query.js";
 import { lint } from "../linter/index.js";
 import { collectPageSummaries, scanWikiPages } from "../compiler/indexgen.js";
 import { detectChanges } from "../compiler/hasher.js";
@@ -136,8 +136,10 @@ function registerQueryTool(server: McpServer, root: string): void {
     },
     async ({ question, save, debug }) => {
       ensureProviderAvailable();
-      const result = await generateAnswer(root, question, { save, debug });
-      return jsonResult(result);
+      // ensureProviderAvailable() always throws now, so this line is unreachable.
+      // The MCP server will be removed in a subsequent issue.
+      throw new Error("LLM adapter not configured");
+      void question; void save; void debug;
     },
   );
 }
@@ -185,8 +187,10 @@ async function pickSearchSlugs(root: string, question: string): Promise<string[]
   }
 
   const indexContent = await safeReadFile(path.join(root, INDEX_FILE));
-  const { pages } = await selectPages(question, indexContent);
-  return pages;
+  // selectPages now requires an llm parameter; throw since the MCP server
+  // will be removed in a subsequent issue and ensureProviderAvailable() already throws.
+  throw new Error("LLM adapter not configured");
+  void question; void indexContent;
 }
 
 /** Deduplicate slugs while preserving the first-seen ordering. */

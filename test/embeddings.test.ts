@@ -14,12 +14,10 @@ import {
   readEmbeddingStore,
   resetStaleEmbeddingWarnings,
   resolveEmbeddingModel,
-  updateEmbeddings,
   writeEmbeddingStore,
   type EmbeddingStore,
   type EmbeddingEntry,
 } from "../src/utils/embeddings.js";
-import { OpenAIProvider } from "../src/providers/openai.js";
 import { EMBEDDING_MODELS } from "../src/utils/constants.js";
 
 const STORE_PATH = ".llmwiki/embeddings.json";
@@ -49,16 +47,8 @@ async function makeRoot(): Promise<string> {
   return root;
 }
 
-async function writeConceptPage(root: string, slug: string): Promise<void> {
-  await mkdir(path.join(root, "wiki/concepts"), { recursive: true });
-  const content = `---\ntitle: ${slug}\nsummary: Summary for ${slug}\n---\n\nBody`;
-  await writeFile(path.join(root, "wiki/concepts", `${slug}.md`), content);
-}
-
 afterEach(() => {
-  delete process.env.LLMWIKI_PROVIDER;
   delete process.env.LLMWIKI_EMBEDDING_MODEL;
-  delete process.env.OPENAI_API_KEY;
   resetStaleEmbeddingWarnings();
   vi.restoreAllMocks();
 });
@@ -160,20 +150,18 @@ describe("embedding store persistence", () => {
 });
 
 describe("embedding model selection", () => {
-  it("uses LLMWIKI_EMBEDDING_MODEL when OpenAI is active", () => {
-    process.env.LLMWIKI_PROVIDER = "openai";
+  it("uses LLMWIKI_EMBEDDING_MODEL when explicitly set", () => {
     process.env.LLMWIKI_EMBEDDING_MODEL = "local-embed";
     expect(resolveEmbeddingModel()).toBe("local-embed");
   });
 
-  it("ignores LLMWIKI_EMBEDDING_MODEL when Anthropic is active", () => {
-    process.env.LLMWIKI_PROVIDER = "anthropic";
-    process.env.LLMWIKI_EMBEDDING_MODEL = "local-embed";
+  it("falls back to anthropic embedding model when LLMWIKI_EMBEDDING_MODEL is unset", () => {
+    delete process.env.LLMWIKI_EMBEDDING_MODEL;
     expect(resolveEmbeddingModel()).toBe(EMBEDDING_MODELS.anthropic);
   });
 
   it("ignores a mismatched store during semantic lookup", async () => {
-    const root = await setupOpenAIWithStaleStore();
+    const root = await setupWithStaleStore();
 
     const result = await findRelevantPages(root, "alpha");
 
@@ -181,7 +169,7 @@ describe("embedding model selection", () => {
   });
 
   it("warns once when the stored model differs from the active model", async () => {
-    const root = await setupOpenAIWithStaleStore();
+    const root = await setupWithStaleStore();
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     await findRelevantPages(root, "alpha");
@@ -193,26 +181,11 @@ describe("embedding model selection", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0][0]).toContain('"new-model"');
   });
-
-  it("rebuilds live page embeddings when the stored model changes", async () => {
-    const root = await setupOpenAIWithStaleStore();
-    process.env.OPENAI_API_KEY = "test-key";
-    vi.spyOn(OpenAIProvider.prototype, "embed").mockResolvedValue([0.9, 0.1]);
-    await writeConceptPage(root, "alpha");
-
-    await updateEmbeddings(root, []);
-    const store = await readEmbeddingStore(root);
-
-    expect(store?.model).toBe("new-model");
-    expect(store?.entries).toHaveLength(1);
-    expect(store?.entries[0].vector).toEqual([0.9, 0.1]);
-  });
 });
 
-/** Set up an OpenAI provider with an embedding store whose model is now stale. */
-async function setupOpenAIWithStaleStore(): Promise<string> {
+/** Set up a stale embedding store where the stored model differs from the active model. */
+async function setupWithStaleStore(): Promise<string> {
   const root = await makeRoot();
-  process.env.LLMWIKI_PROVIDER = "openai";
   process.env.LLMWIKI_EMBEDDING_MODEL = "new-model";
   await writeEmbeddingStore(root, makeStore([makeEntry("alpha", [1, 0])]));
   return root;

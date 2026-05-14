@@ -205,18 +205,13 @@ describe("multimodal ingest CLI integration", () => {
     expect(markdown).toContain("Hello PDF World");
   }, 15_000);
 
-  it("ingest a .png without provider credentials fails with actionable error", async () => {
+  it("ingest a .png fails with a clear error about vision not being supported", async () => {
     const workspace = await makeWorkspaceFromFixture("sample-1x1.png");
-    const result = await runCLI(["ingest", workspace.fixturePath], workspace.cwd, {
-      ANTHROPIC_API_KEY: "",
-      ANTHROPIC_AUTH_TOKEN: "",
-      LLMWIKI_PROVIDER: "ollama",
-    });
+    const result = await runCLI(["ingest", workspace.fixturePath], workspace.cwd, {});
 
     expectCLIFailure(result);
     const combined = result.stderr + result.stdout;
-    expect(combined, formatCLIFailure(result)).toMatch(/anthropic/i);
-    expect(combined, formatCLIFailure(result)).toMatch(/provider|vision/i);
+    expect(combined, formatCLIFailure(result)).toMatch(/image ingest is not supported/i);
   }, 15_000);
 
   it("source-type detection routes .vtt by extension through the full CLI", async () => {

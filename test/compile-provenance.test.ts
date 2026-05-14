@@ -6,7 +6,7 @@
  * is faithfully written into the wiki page frontmatter and that contradiction
  * warnings are emitted at compile time.
  *
- * Strategy: stub the AnthropicProvider so no real API calls are made.
+ * Strategy: use a mock LLMAdapter so no real API calls are made.
  *   - toolCall() returns extraction JSON with the desired provenance fields.
  *   - complete() returns a minimal wiki-page body.
  * The compiled output is then read back and parsed to assert on frontmatter.
@@ -17,7 +17,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { compileAndReport } from "../src/compiler/index.js";
 import { parseFrontmatter, parseProvenanceMetadata } from "../src/utils/markdown.js";
-import { AnthropicProvider } from "../src/providers/anthropic.js";
+import type { LLMAdapter } from "../src/types/llm-adapter.js";
 import { useCompileProject } from "./fixtures/compile-project.js";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +43,18 @@ function buildExtractionResponse(): string {
 /** Minimal wiki page body returned by the page-generation stub. */
 const STUB_PAGE_BODY = "The sample topic is described here. ^[sample.md]";
 
+/** Build a mock LLMAdapter for provenance compile tests. */
+function buildMockAdapter(): LLMAdapter {
+  return {
+    async complete(): Promise<string> {
+      return STUB_PAGE_BODY;
+    },
+    async toolCall(): Promise<string> {
+      return buildExtractionResponse();
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -51,12 +63,8 @@ describe("compile-path provenance metadata", () => {
   const ctx = useCompileProject({ dirSuffix: "prov-meta" });
 
   it("writes confidence, provenanceState, and contradictedBy into frontmatter", async () => {
-    vi.spyOn(AnthropicProvider.prototype, "toolCall").mockResolvedValue(
-      buildExtractionResponse(),
-    );
-    vi.spyOn(AnthropicProvider.prototype, "complete").mockResolvedValue(STUB_PAGE_BODY);
-
-    await compileAndReport(ctx.dir);
+    const llm = buildMockAdapter();
+    await compileAndReport(ctx.dir, {}, llm);
 
     const pagePath = path.join(ctx.dir, "wiki", "concepts", "sample-topic.md");
     const content = await readFile(pagePath, "utf-8");
@@ -71,14 +79,10 @@ describe("compile-path provenance metadata", () => {
   });
 
   it("emits a contradiction warning to console during compilation", async () => {
-    vi.spyOn(AnthropicProvider.prototype, "toolCall").mockResolvedValue(
-      buildExtractionResponse(),
-    );
-    vi.spyOn(AnthropicProvider.prototype, "complete").mockResolvedValue(STUB_PAGE_BODY);
-
+    const llm = buildMockAdapter();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await compileAndReport(ctx.dir);
+    await compileAndReport(ctx.dir, {}, llm);
 
     // reportContradictionWarnings calls output.status("!", output.warn(...))
     // which maps to console.log("! <yellow>Contradiction reported on...<reset>")

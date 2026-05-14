@@ -1,6 +1,8 @@
 # init コマンドを新規作成する
 
 Created: 2026-05-14
+Completed: 2026-05-14
+Model: claude-sonnet-4-5
 
 ## 概要
 
@@ -20,3 +22,9 @@ Created: 2026-05-14
   - `export default wiki` の形でエクスポート
 - 既にファイルが存在する場合は上書きせず警告を出す
 - `cli.ts` に `init` コマンドを登録
+
+## 解決方法
+
+`src/commands/init.ts` を新規作成し、`llmwiki init` でカレントディレクトリに `llmwiki.config.ts` テンプレートを生成する実装を行った。
+既存ファイルがある場合は上書きせず `console.warn` で警告を出す。
+`src/cli.ts` に `init` コマンドを登録した。

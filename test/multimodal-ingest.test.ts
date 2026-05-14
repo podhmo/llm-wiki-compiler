@@ -223,16 +223,9 @@ describe("PDF ingest helpers", () => {
 });
 
 describe("image ingest provider gating", () => {
-  it("throws a clear error when the active provider is not Anthropic", async () => {
-    const original = process.env.LLMWIKI_PROVIDER;
-    process.env.LLMWIKI_PROVIDER = "ollama";
-    try {
-      await expect(ingestImage("/tmp/anything.png")).rejects.toThrow(
-        /Image ingest requires the Anthropic provider/,
-      );
-    } finally {
-      if (original === undefined) delete process.env.LLMWIKI_PROVIDER;
-      else process.env.LLMWIKI_PROVIDER = original;
-    }
+  it("throws a clear error since image ingest requires an LLM with vision support", async () => {
+    await expect(ingestImage("/tmp/anything.png")).rejects.toThrow(
+      /Image ingest is not supported/,
+    );
   });
 });
