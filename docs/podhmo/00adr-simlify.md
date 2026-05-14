@@ -48,12 +48,13 @@ llm-wiki-compiler をフォークし、依存を最小化した簡素版を作�
 
 ## 影響
 
-- AIサービスを利用した自動コンパイル・クエリ機能は失われる
+- AIサービスSDKへの直接依存は取り除かれる
+- compile/query のロジックはライブラリ関数として残り、LLM呼び出し部分はユーザーが注入する形になる（詳細は [ADR #1](./01adr-command-builder.md) を参照）
 - リッチメディア（PDF, 画像, YouTube）のインジェスト機能は失われる
 - MCPサーバー経由のエージェント連携は失われる
 - Markdownテキスト処理、frontmatter操作、ハッシュ計算などの基盤機能は保持される
-- 外部AIサービスへのAPI呼び出しが不要になり、オフラインで動作可能になる
 
 ## 関連
 
+- [ADR #1: コマンドビルダーとしての提供](./01adr-command-builder.md) — compile/query をライブラリとして残す方針
 - 詳細な作業マイルストーン: [simlify-milestone.md](./simlify-milestone.md)
