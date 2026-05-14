@@ -51,12 +51,6 @@ export const MOC_FILE = "wiki/MOC.md";
 export const EMBEDDINGS_FILE = ".llmwiki/embeddings.json";
 export const LAST_LINT_FILE = ".llmwiki/last-lint.json";
 
-/** Supported image file extensions for vision-based ingest. */
-export const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
-
-/** Supported transcript file extensions (content-sniff .txt separately). */
-export const TRANSCRIPT_EXTENSIONS = new Set([".vtt", ".srt"]);
-
 /** Pending review candidates awaiting approval/rejection. */
 export const CANDIDATES_DIR = ".llmwiki/candidates";
 

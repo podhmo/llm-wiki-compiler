@@ -1,36 +1,22 @@
 /**
- * CLI-level integration tests for the multimodal ingest command.
+ * CLI-level integration tests for the file ingest command.
  *
  * These tests exercise the full CLI code path — spawning `node dist/cli.js
- * ingest <file>` — for each supported source type, verifying that routing,
+ * ingest <file>` — for local file ingestion, verifying that routing,
  * frontmatter, and content extraction all work together end-to-end.
  *
  * Fixture files live under `test/fixtures/multimodal/` and are real files that
- * contributors can inspect. Tests load them via readFile() rather than inlining
- * content as string constants.
+ * contributors can inspect.
  *
  * Scope:
  *  - `ingest --help` shows help and exits 0
- *  - VTT transcript: written with sourceType transcript, timestamps preserved
- *  - SRT transcript: written with sourceType transcript, timestamps preserved
- *  - Plain-text transcript with speaker tags: routes to transcript adapter
- *  - Plain-text prose without transcript signals: routes to file adapter
- *  - Plain-text with section headers but no repeats: routes to file adapter
- *  - PDF: written with sourceType pdf, text extracted
- *  - Image without credentials: exits non-zero with actionable error message
- *  - Extension routing verified end-to-end for .vtt, .srt, and .pdf
+ *  - Plain-text prose .txt: routes to file adapter, sourceType file
+ *  - Plain-text .txt with section headers: routes to file adapter
+ *  - .md file: routes to file adapter
+ *  - URL input: exits non-zero with actionable error message
  *  - Empty file: fails or produces skeleton, does not crash
  *  - Non-existent path: exits non-zero with actionable error
- *  - Bulk ingest: 3 fixtures in the same workspace produce 3 distinct files
- *  - Plain-prose .txt: explicitly asserts sourceType file in frontmatter
- *  - .txt with timestamps but no speaker tags: routes to transcript
- *
- * Tests that require real vision API calls (actual image description) are
- * intentionally absent — they would cost quota and are non-deterministic.
- * The credential-failure path for image ingest IS tested here as an
- * offline-safe proxy for source-type routing correctness.
- *
- * All fixture files are written to a tmp directory and cleaned up after each test.
+ *  - Bulk ingest: 3 txt fixtures in the same workspace produce 3 distinct files
  */
 
 import { describe, it, expect, afterEach } from "vitest";
@@ -71,7 +57,6 @@ async function makeWorkspaceFromFixture(fixtureName: string): Promise<Workspace>
 
 /**
  * Create a temp workspace with an arbitrary inline content file.
- * Use for edge-case content that does not warrant a fixture file.
  * @param fixtureName - Filename to use inside the workspace.
  * @param content - File content as string or Buffer.
  * @returns Workspace with cwd and absolute fixturePath.
@@ -113,45 +98,7 @@ async function runIngest(
   return { result, markdown };
 }
 
-/**
- * Assert that a transcript fixture writes markdown with the transcript sourceType
- * and preserves the expected timestamp format and speaker content.
- * @param fixtureName - Filename in the multimodal fixture directory.
- * @param timestampMarker - A timestamp string expected in the output markdown.
- * @param speakerLine - A speaker line expected in the output markdown.
- */
-async function assertTranscriptFixture(
-  fixtureName: string,
-  timestampMarker: string,
-  speakerLine: string,
-): Promise<void> {
-  const workspace = await makeWorkspaceFromFixture(fixtureName);
-  const { result, markdown } = await runIngest(workspace);
-  expect(result.stdout, formatCLIFailure(result)).toContain("Next: llmwiki compile");
-  expect(markdown, formatCLIFailure(result)).toContain("sourceType: transcript");
-  expect(markdown, formatCLIFailure(result)).toContain(timestampMarker);
-  expect(markdown, formatCLIFailure(result)).toContain(speakerLine);
-}
-
-/**
- * Assert that a fixture's extension routes it to the given sourceType (not "file")
- * via the full CLI subprocess.
- * @param fixtureName - Filename in the multimodal fixture directory.
- * @param expectedSourceType - The frontmatter sourceType value expected.
- */
-async function assertExtensionRoutesTo(
-  fixtureName: string,
-  expectedSourceType: string,
-): Promise<void> {
-  const workspace = await makeWorkspaceFromFixture(fixtureName);
-  const result = await runCLI(["ingest", workspace.fixturePath], workspace.cwd);
-  expectCLIExit(result, 0);
-  const markdown = await readIngestedMarkdown(workspace.cwd);
-  expect(markdown, formatCLIFailure(result)).toContain(`sourceType: ${expectedSourceType}`);
-  expect(markdown, formatCLIFailure(result)).not.toContain("sourceType: file");
-}
-
-describe("multimodal ingest CLI integration", () => {
+describe("file ingest CLI integration", () => {
   // dist/cli.js is built once via vitest globalSetup (test/global-setup.ts)
 
   it("ingest --help shows help and exits 0", async () => {
@@ -159,30 +106,6 @@ describe("multimodal ingest CLI integration", () => {
     expectCLIExit(result, 0);
     expect(result.stdout, formatCLIFailure(result)).toContain("ingest");
     expect(result.stdout, formatCLIFailure(result)).toContain("source");
-  }, 15_000);
-
-  it("ingest a .vtt transcript writes markdown with sourceType transcript", async () => {
-    await assertTranscriptFixture(
-      "sample-meeting.vtt",
-      "00:00:01.000 --> 00:00:04.500",
-      "Alice: Good morning everyone.",
-    );
-  }, 15_000);
-
-  it("ingest a .srt transcript writes markdown with sourceType transcript", async () => {
-    await assertTranscriptFixture(
-      "sample-subtitles.srt",
-      "00:00:01,000 --> 00:00:04,000",
-      "Alice: Welcome to the tutorial series.",
-    );
-  }, 15_000);
-
-  it("ingest a plain-text .txt transcript with speaker tags routes to transcript adapter", async () => {
-    const workspace = await makeWorkspaceFromFixture("sample-dialogue.txt");
-    const { markdown } = await runIngest(workspace);
-    expect(markdown).toContain("sourceType: transcript");
-    expect(markdown).toContain("Alice: Hey, did you get a chance to review the pull request?");
-    expect(markdown).toContain("Bob: Yes, I left some comments.");
   }, 15_000);
 
   it("ingest a plain-prose .txt with no transcript signals routes to file adapter", async () => {
@@ -197,75 +120,22 @@ describe("multimodal ingest CLI integration", () => {
     expect(markdown).toContain("sourceType: file");
   }, 15_000);
 
-  it("ingest a .pdf writes markdown with sourceType pdf and extracted text", async () => {
-    const workspace = await makeWorkspaceFromFixture("sample.pdf");
-    const { result, markdown } = await runIngest(workspace);
-    expect(result.stdout, formatCLIFailure(result)).toContain("Next: llmwiki compile");
-    expect(markdown).toContain("sourceType: pdf");
-    expect(markdown).toContain("Hello PDF World");
-  }, 15_000);
-
-  it("ingest a .png fails with a clear error about vision not being supported", async () => {
-    const workspace = await makeWorkspaceFromFixture("sample-1x1.png");
-    const result = await runCLI(["ingest", workspace.fixturePath], workspace.cwd, {});
-
+  it("ingest a URL exits non-zero with a descriptive error", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "llmwiki-ingest-integration-"));
+    tempDirs.push(cwd);
+    const result = await runCLI(["ingest", "https://example.com/page"], cwd);
     expectCLIFailure(result);
     const combined = result.stderr + result.stdout;
-    expect(combined, formatCLIFailure(result)).toMatch(/image ingest is not supported/i);
-  }, 15_000);
-
-  it("source-type detection routes .vtt by extension through the full CLI", async () => {
-    await assertExtensionRoutesTo("sample-meeting.vtt", "transcript");
-  }, 15_000);
-
-  it("source-type detection routes .srt by extension through the full CLI", async () => {
-    await assertExtensionRoutesTo("sample-subtitles.srt", "transcript");
-  }, 15_000);
-
-  it("source-type detection routes .pdf by extension through the full CLI", async () => {
-    await assertExtensionRoutesTo("sample.pdf", "pdf");
+    expect(combined, formatCLIFailure(result)).toMatch(/URL sources are not supported/i);
   }, 15_000);
 });
 
-describe("multimodal ingest — sourceType frontmatter per fixture", () => {
-  // One focused test per fixture file: verifies only the frontmatter sourceType,
-  // without the broader content and stdout assertions from the first describe block.
-  it("sample-meeting.vtt has sourceType transcript in frontmatter", async () => {
-    const workspace = await makeWorkspaceFromFixture("sample-meeting.vtt");
-    const { markdown } = await runIngest(workspace);
-    expect(markdown).toContain("sourceType: transcript");
-  }, 15_000);
-
-  it("sample-subtitles.srt has sourceType transcript in frontmatter", async () => {
-    const workspace = await makeWorkspaceFromFixture("sample-subtitles.srt");
-    const { markdown } = await runIngest(workspace);
-    expect(markdown).toContain("sourceType: transcript");
-  }, 15_000);
-
-  it("sample-dialogue.txt has sourceType transcript in frontmatter", async () => {
-    const workspace = await makeWorkspaceFromFixture("sample-dialogue.txt");
-    const { markdown } = await runIngest(workspace);
-    expect(markdown).toContain("sourceType: transcript");
-  }, 15_000);
-
-  it("sample.pdf has sourceType pdf in frontmatter", async () => {
-    const workspace = await makeWorkspaceFromFixture("sample.pdf");
-    const { markdown } = await runIngest(workspace);
-    expect(markdown).toContain("sourceType: pdf");
-  }, 15_000);
-});
-
-describe("multimodal ingest — edge cases", () => {
+describe("file ingest — edge cases", () => {
   it("ingest an empty .txt file does not crash and produces a skeleton with sourceType file", async () => {
-    // An empty .txt routes to the file adapter. The file adapter wraps content
-    // in a code block (8 chars), which is short but non-zero, so the CLI exits 0
-    // and emits a "content seems very short" warning rather than crashing.
     const workspace = await makeWorkspaceWithContent("empty.txt", "");
     const result = await runCLI(["ingest", workspace.fixturePath], workspace.cwd);
-    // Must not crash (exit code is 0 or non-zero, but ENOENT/signal are not acceptable)
     expect(result.killed, formatCLIFailure(result)).toBe(false);
     expect(result.signal, formatCLIFailure(result)).toBeNull();
-    // If it succeeds, the frontmatter should record sourceType file
     if (result.code === 0) {
       const markdown = await readIngestedMarkdown(workspace.cwd);
       expect(markdown).toContain("sourceType: file");
@@ -278,13 +148,13 @@ describe("multimodal ingest — edge cases", () => {
   it("ingest a non-existent path exits non-zero with an actionable error", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "llmwiki-ingest-integration-"));
     tempDirs.push(cwd);
-    const result = await runCLI(["ingest", "/tmp/does-not-exist-llmwiki.vtt"], cwd);
+    const result = await runCLI(["ingest", "/tmp/does-not-exist-llmwiki.txt"], cwd);
     expectCLIFailure(result);
     const combined = result.stderr + result.stdout;
     expect(combined, formatCLIFailure(result)).toMatch(/no such file|not found|ENOENT/i);
   }, 15_000);
 
-  it("ingest a .txt with only one summary header routes to file (not transcript)", async () => {
+  it("ingest a .txt with only one summary header routes to file", async () => {
     const workspace = await makeWorkspaceWithContent(
       "single-header.txt",
       "Summary: This is an ordinary project note with no back-and-forth dialogue.\n",
@@ -292,25 +162,14 @@ describe("multimodal ingest — edge cases", () => {
     const { markdown } = await runIngest(workspace);
     expect(markdown).toContain("sourceType: file");
   }, 15_000);
-
-  it("ingest a .txt with timestamps but no speaker tags routes to transcript", async () => {
-    const timedContent = [
-      "00:01 First observation from the field.",
-      "00:02 Second observation, things are looking good.",
-      "00:03 Third observation, wrapping up the session.",
-    ].join("\n") + "\n";
-    const workspace = await makeWorkspaceWithContent("timed-log.txt", timedContent);
-    const { markdown } = await runIngest(workspace);
-    expect(markdown).toContain("sourceType: transcript");
-  }, 15_000);
 });
 
-describe("multimodal ingest — bulk ingest", () => {
+describe("file ingest — bulk ingest", () => {
   it(`ingests ${BULK_INGEST_COUNT} different fixtures into the same workspace producing distinct files`, async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "llmwiki-ingest-bulk-"));
     tempDirs.push(cwd);
 
-    const fixtures = ["sample-meeting.vtt", "sample-notes.txt", "sample-subtitles.srt"];
+    const fixtures = ["sample-notes.txt", "sample-headers.txt", "sample-dialogue.txt"];
     for (const fixtureName of fixtures) {
       const source = path.join(FIXTURE_DIR, fixtureName);
       const content = await readFile(source);
