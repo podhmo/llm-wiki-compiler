@@ -49,7 +49,7 @@ interface ScannedPage {
  * @param dirPath - Absolute path to a wiki page directory.
  * @returns Array of {slug, meta} entries — empty when the directory is missing.
  */
-export async function scanWikiPages(dirPath: string): Promise<ScannedPage[]> {
+async function scanWikiPages(dirPath: string): Promise<ScannedPage[]> {
   let files: string[];
   try {
     files = await readdir(dirPath);
@@ -73,7 +73,7 @@ export async function scanWikiPages(dirPath: string): Promise<ScannedPage[]> {
  * @param conceptsPath - Absolute path to wiki/concepts/.
  * @returns Array of page summary objects.
  */
-export async function collectPageSummaries(
+async function collectPageSummaries(
   conceptsPath: string,
 ): Promise<PageSummary[]> {
   const scanned = await scanWikiPages(conceptsPath);

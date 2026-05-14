@@ -22,7 +22,6 @@ import reviewListCommand from "./commands/review-list.js";
 import reviewShowCommand from "./commands/review-show.js";
 import reviewApproveCommand from "./commands/review-approve.js";
 import reviewRejectCommand from "./commands/review-reject.js";
-import { startMCPServer } from "./mcp/server.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -230,21 +229,6 @@ program
   .action(async (options: { target?: string; source?: string }) => {
     try {
       await exportCommand(process.cwd(), options);
-    } catch (err) {
-      console.error(`\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`);
-      process.exit(1);
-    }
-  });
-
-program
-  .command("serve")
-  .description("Start an MCP server exposing wiki tools and resources over stdio")
-  .option("--root <dir>", "Project root directory", process.cwd())
-  .action(async (options: { root: string }) => {
-    try {
-      // Per-tool credential checks happen inside the MCP layer so read-only
-      // tools and ingest still work without an API key.
-      await startMCPServer({ root: options.root, version });
     } catch (err) {
       console.error(`\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`);
       process.exit(1);
