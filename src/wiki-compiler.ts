@@ -59,6 +59,14 @@ export interface WikiCompiler {
 }
 
 /**
+ * Resolve the project root directory: use the provided value if given,
+ * then fall back to the options default, then to process.cwd().
+ */
+function resolveRoot(override: string | undefined, defaultRoot: string | undefined): string {
+  return override ?? defaultRoot ?? process.cwd();
+}
+
+/**
  * Create a wiki compiler bound to the given LLM adapter.
  * Returns compile and query methods that use the injected adapter for all
  * LLM calls.
@@ -67,19 +75,18 @@ export interface WikiCompiler {
  */
 export function createWikiCompiler(options: WikiCompilerOptions): WikiCompiler {
   const { llm, root: defaultRoot } = options;
-  const resolveRoot = (root?: string): string => root ?? defaultRoot ?? process.cwd();
 
   return {
     compile(root?: string, compileOptions?: CompileOptions): Promise<void> {
-      return _compile(resolveRoot(root), compileOptions ?? {}, llm);
+      return _compile(resolveRoot(root, defaultRoot), compileOptions ?? {}, llm);
     },
 
     compileAndReport(root?: string, compileOptions?: CompileOptions): Promise<CompileResult> {
-      return _compileAndReport(resolveRoot(root), compileOptions ?? {}, llm);
+      return _compileAndReport(resolveRoot(root, defaultRoot), compileOptions ?? {}, llm);
     },
 
     query(question: string, root?: string, queryOptions?: GenerateAnswerOptions): Promise<QueryResult> {
-      return generateAnswer(resolveRoot(root), question, llm, queryOptions);
+      return generateAnswer(resolveRoot(root, defaultRoot), question, llm, queryOptions);
     },
   };
 }

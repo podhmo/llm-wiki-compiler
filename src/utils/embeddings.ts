@@ -40,7 +40,8 @@ const STORE_VERSION = 2 as const;
  * updateEmbeddings called from the compile pipeline) catch the error and
  * skip embedding gracefully.
  */
-async function embed(_text: string): Promise<number[]> {
+async function embed(text: string): Promise<number[]> {
+  void text;
   throw new Error(
     "Embedding is not configured. Provide an LLM adapter with embed() support to enable semantic search.",
   );

@@ -135,11 +135,10 @@ function registerQueryTool(server: McpServer, root: string): void {
       },
     },
     async ({ question, save, debug }) => {
-      ensureProviderAvailable();
-      // ensureProviderAvailable() always throws now, so this line is unreachable.
+      // ensureProviderAvailable() always throws after provider system removal.
       // The MCP server will be removed in a subsequent issue.
-      throw new Error("LLM adapter not configured");
-      void question; void save; void debug;
+      ensureProviderAvailable();
+      throw new Error("unreachable");
     },
   );
 }
@@ -186,11 +185,10 @@ async function pickSearchSlugs(root: string, question: string): Promise<string[]
     // Embeddings unavailable — fall through to index-based selection.
   }
 
-  const indexContent = await safeReadFile(path.join(root, INDEX_FILE));
-  // selectPages now requires an llm parameter; throw since the MCP server
-  // will be removed in a subsequent issue and ensureProviderAvailable() already throws.
-  throw new Error("LLM adapter not configured");
-  void question; void indexContent;
+  // TODO: selectPages requires an llm parameter; the MCP server will be removed
+  // in a subsequent issue. ensureProviderAvailable() throws before reaching here.
+  ensureProviderAvailable();
+  throw new Error("unreachable");
 }
 
 /** Deduplicate slugs while preserving the first-seen ordering. */
