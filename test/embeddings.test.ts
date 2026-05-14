@@ -18,7 +18,7 @@ import {
   type EmbeddingStore,
   type EmbeddingEntry,
 } from "../src/utils/embeddings.js";
-import { EMBEDDING_MODELS } from "../src/utils/constants.js";
+import { DEFAULT_EMBEDDING_MODEL } from "../src/utils/constants.js";
 
 const STORE_PATH = ".llmwiki/embeddings.json";
 
@@ -157,7 +157,7 @@ describe("embedding model selection", () => {
 
   it("falls back to anthropic embedding model when LLMWIKI_EMBEDDING_MODEL is unset", () => {
     delete process.env.LLMWIKI_EMBEDDING_MODEL;
-    expect(resolveEmbeddingModel()).toBe(EMBEDDING_MODELS.anthropic);
+    expect(resolveEmbeddingModel()).toBe(DEFAULT_EMBEDDING_MODEL);
   });
 
   it("ignores a mismatched store during semantic lookup", async () => {

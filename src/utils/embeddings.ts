@@ -25,7 +25,7 @@ import {
   QUERIES_DIR,
   EMBEDDINGS_FILE,
   EMBEDDING_TOP_K,
-  EMBEDDING_MODELS,
+  DEFAULT_EMBEDDING_MODEL,
 } from "./constants.js";
 import { hashChunkText, splitIntoChunks } from "./retrieval.js";
 import * as output from "./output.js";
@@ -290,7 +290,7 @@ export function resetStaleEmbeddingWarnings(): void {
 export function resolveEmbeddingModel(): string {
   const configuredModel = process.env.LLMWIKI_EMBEDDING_MODEL?.trim();
   if (configuredModel) return configuredModel;
-  return EMBEDDING_MODELS.anthropic;
+  return DEFAULT_EMBEDDING_MODEL;
 }
 
 /** Merge fresh embeddings into an existing store, dropping slugs not in liveSlugs. */

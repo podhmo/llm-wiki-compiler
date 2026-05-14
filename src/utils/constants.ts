@@ -85,9 +85,5 @@ export const CHUNK_MIN_CHARS = 200;
 export const LOW_CONFIDENCE_THRESHOLD = 0.5;
 export const MAX_INFERRED_PARAGRAPHS_WITHOUT_CITATIONS = 2;
 
-/** Embedding model to use per provider. */
-export const EMBEDDING_MODELS: Record<string, string> = {
-  anthropic: "voyage-3-lite",
-  openai: "text-embedding-3-small",
-  ollama: "nomic-embed-text",
-};
+/** Default embedding model used when LLMWIKI_EMBEDDING_MODEL env var is not set. */
+export const DEFAULT_EMBEDDING_MODEL = "voyage-3-lite";
