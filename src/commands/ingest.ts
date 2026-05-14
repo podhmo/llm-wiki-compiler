@@ -255,7 +255,7 @@ async function fetchContent(
  * @param source - A URL (http/https), YouTube URL, local file, PDF, or image path.
  * @returns Saved filename, character count, truncation flag, source URI, and detected source type.
  */
-export async function ingestSource(source: string): Promise<IngestResult> {
+async function ingestSource(source: string): Promise<IngestResult> {
   const sourceType = await detectSourceType(source);
   output.status("*", output.info(`Ingesting [${sourceType}]: ${source}`));
 
