@@ -21,7 +21,7 @@ const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
  * @param body - The markdown body text.
  * @returns Deduplicated array of target slugs.
  */
-export function extractWikilinkSlugs(body: string): string[] {
+function extractWikilinkSlugs(body: string): string[] {
   const slugs = new Set<string>();
   let match;
   while ((match = WIKILINK_RE.exec(body)) !== null) {

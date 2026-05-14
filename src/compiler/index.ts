@@ -24,7 +24,6 @@ import {
   slugify,
 } from "../utils/markdown.js";
 import { callClaude } from "../utils/llm.js";
-import { acquireLock, releaseLock } from "../utils/lock.js";
 import {
   CONCEPT_EXTRACTION_TOOL,
   buildExtractionPrompt,
@@ -46,7 +45,6 @@ import { resolveLinks } from "./resolver.js";
 import { generateIndex } from "./indexgen.js";
 import { buildBudgetedCombinedContent, type SourceSlice } from "./prompt-budget.js";
 import { addObsidianMeta, generateMOC } from "./obsidian.js";
-import { updateEmbeddings } from "../utils/embeddings.js";
 import { writeCandidate } from "./candidates.js";
 import {
   checkPageBrokenCitations,
@@ -57,12 +55,10 @@ import type { LintResult } from "../linter/types.js";
 import { renderMergedPageContent } from "./page-renderer.js";
 import * as output from "../utils/output.js";
 import {
-  COMPILE_CONCURRENCY,
   CONCEPTS_DIR,
   INDEX_FILE,
   SOURCES_DIR,
 } from "../utils/constants.js";
-import pLimit from "p-limit";
 import type {
   CompileOptions,
   CompileResult,
@@ -125,21 +121,7 @@ export async function compileAndReport(
   llm?: LLMAdapter,
 ): Promise<CompileResult> {
   output.header("llmwiki compile");
-
-  const locked = await acquireLock(root);
-  if (!locked) {
-    output.status("!", output.error("Could not acquire lock. Try again later."));
-    return {
-      ...emptyCompileResult(),
-      errors: ["Could not acquire .llmwiki/lock — another compile is in progress."],
-    };
-  }
-
-  try {
-    return await runCompilePipeline(root, options, llm);
-  } finally {
-    await releaseLock(root);
-  }
+  return runCompilePipeline(root, options, llm);
 }
 
 /** Buckets of source changes used by the compile pipeline. */
@@ -189,17 +171,15 @@ async function generatePagesPhase(
   const sourceStates = options.review
     ? await buildExtractionSourceStates(root, extractions)
     : {};
-  const limit = pLimit(COMPILE_CONCURRENCY);
   const errors: string[] = [];
   const candidates: string[] = [];
-  const pages = await Promise.all(
-    merged.map((entry) => limit(async () => {
-      const result = await generateMergedPage(root, entry, schema, options, sourceStates, llm);
-      if (result.error) errors.push(result.error);
-      if (result.candidateId) candidates.push(result.candidateId);
-      return entry;
-    })),
-  );
+  const pages = [];
+  for (const entry of merged) {
+    const result = await generateMergedPage(root, entry, schema, options, sourceStates, llm);
+    if (result.error) errors.push(result.error);
+    if (result.candidateId) candidates.push(result.candidateId);
+    pages.push(entry);
+  }
   return { pages, errors, candidates, seedSlugs: [] };
 }
 
@@ -422,7 +402,6 @@ async function finalizeWiki(
 
   await generateIndex(root);
   await generateMOC(root);
-  await safelyUpdateEmbeddings(root, allChangedSlugs);
 }
 
 /** Print a summary of detected source file changes. */
@@ -782,20 +761,6 @@ async function writePageIfValid(
 
   await atomicWrite(pagePath, content);
   return null;
-}
-
-/**
- * Refresh the embeddings store without failing compilation.
- * Semantic search is a non-critical enhancement — missing API keys or
- * transient provider errors should produce a warning, not a broken build.
- */
-async function safelyUpdateEmbeddings(root: string, changedSlugs: string[]): Promise<void> {
-  try {
-    await updateEmbeddings(root, changedSlugs);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    output.status("!", output.warn(`Skipped embeddings update: ${message}`));
-  }
 }
 
 /**

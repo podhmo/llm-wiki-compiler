@@ -8,9 +8,10 @@
  * URL sources are not supported; pass a local file path instead.
  */
 
+import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
-import { buildFrontmatter } from "../utils/markdown.js";
-import { saveSource } from "../utils/source-writer.js";
+import { createHash } from "crypto";
+import { buildFrontmatter, parseFrontmatter, slugify } from "../utils/markdown.js";
 import { MAX_SOURCE_CHARS, MIN_SOURCE_CHARS, SOURCES_DIR } from "../utils/constants.js";
 import * as output from "../utils/output.js";
 import ingestFile from "../ingest/file.js";
@@ -109,6 +110,61 @@ export function buildDocument(
   const frontmatter = buildFrontmatter(meta);
 
   return `${frontmatter}\n\n${result.content}\n`;
+}
+
+/** Length of the hex hash suffix appended to disambiguate basename collisions. */
+const COLLISION_HASH_LEN = 8;
+
+/**
+ * Compute a short, stable hex hash of a source identifier. Stability
+ * matters — re-ingesting the same source must always produce the same
+ * hash so existing files are overwritten cleanly.
+ */
+function shortHashOfSource(source: string): string {
+  return createHash("sha256").update(source).digest("hex").slice(0, COLLISION_HASH_LEN);
+}
+
+/**
+ * Resolve the destination filename for a slug + source identity.
+ * Handles collision avoidance for distinct sources that share a basename.
+ */
+async function resolveCollisionFreeFilename(slug: string, source: string): Promise<string> {
+  const candidate = `${slug}.md`;
+  const candidatePath = path.join(SOURCES_DIR, candidate);
+  let existing: string;
+  try {
+    existing = await readFile(candidatePath, "utf-8");
+  } catch (err) {
+    const e = err as { code?: string };
+    if (e.code === "ENOENT") return candidate;
+    throw err;
+  }
+  const { meta } = parseFrontmatter(existing);
+  if (typeof meta.source === "string" && meta.source === source) {
+    return candidate;
+  }
+  return `${slug}-${shortHashOfSource(source)}.md`;
+}
+
+/**
+ * Write a markdown document into `sources/` under a slug derived from
+ * the title, applying the empty-slug guard and basename-collision
+ * disambiguation. Returns the resolved destination path.
+ */
+async function saveSource(title: string, document: string, source: string): Promise<string> {
+  const slug = slugify(title);
+  if (!slug) {
+    throw new Error(
+      `Could not derive a filename from title "${title}". ` +
+        `The title contains no letter or number characters. ` +
+        `Rename the source file to one with at least one letter or digit.`,
+    );
+  }
+  await mkdir(SOURCES_DIR, { recursive: true });
+  const filename = await resolveCollisionFreeFilename(slug, source);
+  const destPath = path.join(SOURCES_DIR, filename);
+  await writeFile(destPath, document, "utf-8");
+  return destPath;
 }
 
 /**

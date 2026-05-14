@@ -107,8 +107,8 @@ describeOrSkip("pack-and-install smoke", () => {
   it("--help lists the core commands", async () => {
     const { stdout } = await exec(bin, ["--help"]);
     expect(stdout).toContain("ingest");
-    expect(stdout).toContain("compile");
-    expect(stdout).toContain("query");
+    expect(stdout).toContain("lint");
+    expect(stdout).toContain("export");
   });
 
   it("ingest --help exits cleanly", async () => {

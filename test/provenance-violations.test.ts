@@ -27,7 +27,6 @@ import {
 } from "../src/linter/rules.js";
 import { writeCandidate, readCandidate } from "../src/compiler/candidates.js";
 import { useTempRoot } from "./fixtures/temp-root.js";
-import { captureShowOutput } from "./fixtures/review-show-helpers.js";
 import type { LintResult } from "../src/linter/types.js";
 
 const root = useTempRoot(["sources"]);
@@ -155,32 +154,4 @@ describe("candidate provenance violations — persistence", () => {
   });
 });
 
-describe("review show — provenance violations display", () => {
-  it("prints provenance block when the candidate has provenanceViolations", async () => {
-    const candidate = await writeCandidate(root.dir, {
-      title: "Sample",
-      slug: "sample",
-      summary: "A sample.",
-      sources: ["source.md"],
-      body: VALID_BODY,
-      provenanceViolations: [SAMPLE_PROVENANCE_VIOLATION],
-    });
-
-    const allOutput = await captureShowOutput(candidate.id);
-    expect(allOutput).toContain("Provenance violations");
-    expect(allOutput).toContain("Malformed claim citation");
-  });
-
-  it("does not print provenance block when the candidate has no provenanceViolations", async () => {
-    const candidate = await writeCandidate(root.dir, {
-      title: "Clean",
-      slug: "clean",
-      summary: "No violations.",
-      sources: ["source.md"],
-      body: VALID_BODY,
-    });
-
-    const allOutput = await captureShowOutput(candidate.id);
-    expect(allOutput).not.toContain("Provenance violations");
-  });
-});
+/* review show tests removed — review commands deleted (issue-010) */

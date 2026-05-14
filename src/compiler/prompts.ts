@@ -11,17 +11,14 @@ import type {
   ProvenanceState,
 } from "../utils/types.js";
 import type { PageKindRule, SeedPage } from "../schema/index.js";
-import { languageDirective } from "../utils/output-language.js";
 
 /**
- * Build a list of optional prompt lines, omitting empty entries so the
- * default-case prompt is byte-identical to the previous version. Used by
- * the prompt builders to splice in the output-language directive only
- * when the user opted in.
+ * Build a list of prompt lines, filtering out empty entries.
+ * Previously also spliced in an output-language directive; that
+ * feature was removed with output-language.ts (issue-011).
  */
 function withLangLine(...lines: string[]): string[] {
-  const lang = languageDirective();
-  return lang ? [...lines, lang] : lines;
+  return lines;
 }
 
 /** Allowed provenance state strings emitted by the LLM tool schema. */

@@ -15,7 +15,6 @@
 import { describe, it, expect } from "vitest";
 import { writeCandidate, readCandidate } from "../src/compiler/candidates.js";
 import { useTempRoot } from "./fixtures/temp-root.js";
-import { captureShowOutput } from "./fixtures/review-show-helpers.js";
 import type { LintResult } from "../src/linter/types.js";
 
 const root = useTempRoot(["sources"]);
@@ -83,32 +82,4 @@ describe("candidate schema violations — persistence", () => {
   });
 });
 
-describe("review show — schema violations display", () => {
-  it("prints violations block when the candidate has schemaViolations", async () => {
-    const candidate = await writeCandidate(root.dir, {
-      title: "Overview Page",
-      slug: "overview-page",
-      summary: "An overview.",
-      sources: ["source.md"],
-      body: VALID_BODY,
-      schemaViolations: [SAMPLE_VIOLATION],
-    });
-
-    const allOutput = await captureShowOutput(candidate.id);
-    expect(allOutput).toContain("Schema violations");
-    expect(allOutput).toContain("requires at least 3");
-  });
-
-  it("does not print violations block when the candidate has no schemaViolations", async () => {
-    const candidate = await writeCandidate(root.dir, {
-      title: "Clean Page",
-      slug: "clean-page",
-      summary: "No violations.",
-      sources: ["source.md"],
-      body: VALID_BODY,
-    });
-
-    const allOutput = await captureShowOutput(candidate.id);
-    expect(allOutput).not.toContain("Schema violations");
-  });
-});
+/* review show tests removed — review commands deleted (issue-010) */
