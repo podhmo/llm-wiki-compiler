@@ -56,7 +56,7 @@
 | `watch` | compileの自動化（compile削除に伴い不要） |
 | `ingest-session` | AIコーディングセッション取り込み（AI依存） |
 | `review list/show/approve/reject` | compileのレビューワークフロー（compile削除に伴い不要） |
-| `serve` | MCPサーバー（AI依存） |
+| `serve` | MCPサーバー機能 |
 
 #### 残るサブコマンド（4個）
 
