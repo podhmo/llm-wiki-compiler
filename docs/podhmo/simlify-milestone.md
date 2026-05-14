@@ -132,33 +132,33 @@
 
 #### Phase 1: コマンドビルダー基盤の構築
 
-- [ ] **A-1**: `LLMAdapter` インターフェースを定義（`src/types/llm-adapter.ts`）。`complete` は必須、`stream` / `toolCall` はオプション → [issue-001](./issues/issue-001-llm-adapter-interface.md)
-- [ ] **A-2**: `createWikiCompiler({ llm })` ファクトリ関数を実装。LLMAdapter を受け取り、compile / query のライブラリ関数を返す → [issue-002](./issues/issue-002-create-wiki-compiler.md)
-- [ ] **A-3**: `src/utils/llm.ts` の `callClaude()` を、注入された `LLMAdapter` のラッパーに書き換え。グローバルプロバイダー選択を廃止 → [issue-003](./issues/issue-003-refactor-call-claude.md)
-- [ ] **A-4**: `src/commands/init.ts` を新規作成。`llmwiki init` で `llmwiki.config.ts` テンプレートを生成 → [issue-004](./issues/issue-004-init-command.md)
+- [x] **A-1**: `LLMAdapter` インターフェースを定義（`src/types/llm-adapter.ts`）。`complete` は必須、`stream` / `toolCall` はオプション → [issue-001](./issues/closed/issue-001-llm-adapter-interface.md)
+- [x] **A-2**: `createWikiCompiler({ llm })` ファクトリ関数を実装。LLMAdapter を受け取り、compile / query のライブラリ関数を返す → [issue-002](./issues/closed/issue-002-create-wiki-compiler.md)
+- [x] **A-3**: `src/utils/llm.ts` の `callClaude()` を、注入された `LLMAdapter` のラッパーに書き換え。グローバルプロバイダー選択を廃止 → [issue-003](./issues/closed/issue-003-refactor-call-claude.md)
+- [x] **A-4**: `src/commands/init.ts` を新規作成。`llmwiki init` で `llmwiki.config.ts` テンプレートを生成 → [issue-004](./issues/closed/issue-004-init-command.md)
 
 #### Phase 2: AI SDK依存の除去
 
-- [ ] **A-5**: `src/providers/` ディレクトリ全体を削除。`src/utils/provider.ts`, `src/utils/claude-settings.ts` を削除 → [issue-005](./issues/issue-005-delete-providers.md)
-- [ ] **A-6**: `src/mcp/` ディレクトリ全体を削除し、`serve` コマンドを `cli.ts` から除去。`zod`, `@modelcontextprotocol/sdk` を `package.json` から削除 → [issue-006](./issues/issue-006-delete-mcp.md)
-- [ ] **A-7**: `@anthropic-ai/sdk`, `openai`, `dotenv` を `package.json` から削除 → [issue-007](./issues/issue-007-delete-ai-sdk-deps.md)
+- [x] **A-5**: `src/providers/` ディレクトリ全体を削除。`src/utils/provider.ts`, `src/utils/claude-settings.ts` を削除 → [issue-005](./issues/closed/issue-005-delete-providers.md)
+- [x] **A-6**: `src/mcp/` ディレクトリ全体を削除し、`serve` コマンドを `cli.ts` から除去。`zod`, `@modelcontextprotocol/sdk` を `package.json` から削除 → [issue-006](./issues/closed/issue-006-delete-mcp.md)
+- [x] **A-7**: `@anthropic-ai/sdk`, `openai`, `dotenv` を `package.json` から削除 → [issue-007](./issues/closed/issue-007-delete-ai-sdk-deps.md)
 
 #### Phase 3: リッチメディア・不要機能の除去
 
-- [ ] **A-8**: `src/ingest/web.ts`, `src/ingest/pdf.ts`, `src/ingest/transcript.ts`, `src/ingest/image.ts` を削除。`@mozilla/readability`, `jsdom`, `turndown`, `pdf-parse`, `youtube-transcript` を `package.json` から削除 → [issue-008](./issues/issue-008-delete-rich-media-ingest.md)
-- [ ] **A-9**: `src/adapters/` ディレクトリ全体を削除し、`ingest-session` コマンドを `cli.ts` から除去 → [issue-009](./issues/issue-009-delete-adapters.md)
-- [ ] **A-10**: `src/commands/watch.ts`, `src/commands/review-*.ts` を削除。関連コマンドを `cli.ts` から除去。`chokidar`, `p-limit` を `package.json` から削除 → [issue-010](./issues/issue-010-delete-watch-review.md)
-- [ ] **A-11**: `src/utils/` から不要ファイル（`lock.ts`, `output-language.ts`, `source-writer.ts`, `retrieval.ts`, `embeddings.ts`）を削除 → [issue-011](./issues/issue-011-delete-unused-utils.md)
-- [ ] **A-12**: `src/export/` から `graphml.ts`, `json-ld.ts`, `marp.ts` を削除 → [issue-012](./issues/issue-012-delete-unused-exports.md)
+- [x] **A-8**: `src/ingest/web.ts`, `src/ingest/pdf.ts`, `src/ingest/transcript.ts`, `src/ingest/image.ts` を削除。`@mozilla/readability`, `jsdom`, `turndown`, `pdf-parse`, `youtube-transcript` を `package.json` から削除 → [issue-008](./issues/closed/issue-008-delete-rich-media-ingest.md)
+- [x] **A-9**: `src/adapters/` ディレクトリ全体を削除し、`ingest-session` コマンドを `cli.ts` から除去 → [issue-009](./issues/closed/issue-009-delete-adapters.md)
+- [x] **A-10**: `src/commands/watch.ts`, `src/commands/review-*.ts` を削除。関連コマンドを `cli.ts` から除去。`chokidar`, `p-limit` を `package.json` から削除 → [issue-010](./issues/closed/issue-010-delete-watch-review.md)
+- [x] **A-11**: `src/utils/` から不要ファイル（`lock.ts`, `output-language.ts`, `source-writer.ts`, `retrieval.ts`, `embeddings.ts`）を削除 → [issue-011](./issues/closed/issue-011-delete-unused-utils.md)
+- [x] **A-12**: `src/export/` から `graphml.ts`, `json-ld.ts`, `marp.ts` を削除 → [issue-012](./issues/closed/issue-012-delete-unused-exports.md)
 
 #### Phase 4: CLI整理と仕上げ
 
-- [ ] **A-13**: `src/cli.ts` を整理。削除したコマンドのimportと登録を除去。`requireProvider()`, `applyLanguageOption()` を削除。`init` コマンドを追加 → [issue-013](./issues/issue-013-cleanup-cli.md)
-- [ ] **A-14**: compile/query をCLIコマンドから外し、ライブラリ公開（`index.ts` でエクスポート）に変更 → [issue-014](./issues/issue-014-library-export.md)
-- [ ] **A-15**: devDependencies から `@copilotkit/aimock`, `@types/jsdom`, `@types/turndown` を削除 → [issue-015](./issues/issue-015-cleanup-dev-deps.md)
-- [ ] **A-16**: テストの更新。削除した機能に関するテストを除去し、残る機能のテストが通ることを確認。`LLMAdapter` のモック注入テストを追加 → [issue-016](./issues/issue-016-update-tests.md)
-- [ ] **A-17**: README.md とドキュメントを更新。コマンドビルダーとしての利用方法を記載 → [issue-017](./issues/issue-017-update-docs.md)
-- [ ] **A-18**: `npm run build` と `npm test` で最終検証 → [issue-018](./issues/issue-018-final-verification.md)
+- [x] **A-13**: `src/cli.ts` を整理。削除したコマンドのimportと登録を除去。`requireProvider()`, `applyLanguageOption()` を削除。`init` コマンドを追加 → [issue-013](./issues/closed/issue-013-cleanup-cli.md)
+- [x] **A-14**: compile/query をCLIコマンドから外し、ライブラリ公開（`index.ts` でエクスポート）に変更 → [issue-014](./issues/closed/issue-014-library-export.md)
+- [x] **A-15**: devDependencies から `@copilotkit/aimock`, `@types/jsdom`, `@types/turndown` を削除 → [issue-015](./issues/closed/issue-015-cleanup-dev-deps.md)
+- [x] **A-16**: テストの更新。削除した機能に関するテストを除去し、残る機能のテストが通ることを確認。`LLMAdapter` のモック注入テストを追加 → [issue-016](./issues/closed/issue-016-update-tests.md)
+- [x] **A-17**: README.md とドキュメントを更新。コマンドビルダーとしての利用方法を記載 → [issue-017](./issues/closed/issue-017-update-docs.md)
+- [x] **A-18**: `npm run build` と `npm test` で最終検証 → [issue-018](./issues/closed/issue-018-final-verification.md)
 
 ---
 
