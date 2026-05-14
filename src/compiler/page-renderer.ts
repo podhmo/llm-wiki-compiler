@@ -22,6 +22,7 @@ import { addProvenanceMeta, reportContradictionWarnings } from "./provenance.js"
 import { CONCEPTS_DIR } from "../utils/constants.js";
 import type { SchemaConfig } from "../schema/index.js";
 import type { ExtractedConcept } from "../utils/types.js";
+import type { LLMAdapter } from "../types/llm-adapter.js";
 
 /** Maximum number of existing concept pages to include as cross-reference context. */
 const RELATED_PAGE_CONTEXT_LIMIT = 5;
@@ -40,12 +41,14 @@ interface RenderableConcept {
  * @param root - Project root directory.
  * @param entry - The merged concept to render.
  * @param schema - Resolved schema config, used to stamp `kind` on frontmatter.
+ * @param llm - The LLM adapter to use for generation.
  * @returns Full markdown content (frontmatter + body, trailing newline).
  */
 export async function renderMergedPageContent(
   root: string,
   entry: RenderableConcept,
   schema: SchemaConfig,
+  llm: LLMAdapter,
 ): Promise<string> {
   const pagePath = path.join(root, CONCEPTS_DIR, `${entry.slug}.md`);
   const existingPage = await safeReadFile(pagePath);
@@ -58,7 +61,7 @@ export async function renderMergedPageContent(
     relatedPages,
   );
 
-  const pageBody = await callClaude({
+  const pageBody = await callClaude(llm, {
     system,
     messages: [
       { role: "user", content: `Write the wiki page for "${entry.concept.concept}".` },

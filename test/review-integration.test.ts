@@ -112,24 +112,6 @@ describe("review integration tests", () => {
   }, 30_000);
 
   // -------------------------------------------------------------------------
-  // compile --review without credentials
-  // -------------------------------------------------------------------------
-
-  it("compile --review fails with credential error when no API key set", async () => {
-    const cwd = await makeTempWorkspace("compile-review-no-key");
-    try {
-      const result = await runCLI(["compile", "--review"], cwd, {
-        ANTHROPIC_API_KEY: "",
-        ANTHROPIC_AUTH_TOKEN: "",
-      });
-      expectCLIFailure(result);
-      expect(result.stderr).toContain("Error:");
-    } finally {
-      await cleanupDir(cwd);
-    }
-  }, 30_000);
-
-  // -------------------------------------------------------------------------
   // review list — no candidates
   // -------------------------------------------------------------------------
 

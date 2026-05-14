@@ -21,6 +21,7 @@ import reviewRejectCommand from "../src/commands/review-reject.js";
 import reviewListCommand from "../src/commands/review-list.js";
 import reviewShowCommand from "../src/commands/review-show.js";
 import { compileAndReport } from "../src/compiler/index.js";
+import type { LLMAdapter } from "../src/types/llm-adapter.js";
 import {
   CANDIDATES_ARCHIVE_DIR,
   CANDIDATES_DIR,
@@ -200,26 +201,35 @@ describe("review list and show commands", () => {
 });
 
 describe("compile --review pipeline integration", () => {
+  /** Build a mock LLMAdapter that extracts one concept and returns its body. */
+  function buildSingleConceptAdapter(
+    concept: string,
+    bodyFn?: () => string,
+  ): LLMAdapter {
+    return {
+      async complete(): Promise<string> {
+        return bodyFn
+          ? bodyFn()
+          : `## ${concept}\n\nThe page body for the ${concept}.`;
+      },
+      async toolCall(): Promise<string> {
+        return JSON.stringify({
+          concepts: [
+            { concept, summary: `A ${concept.toLowerCase()}.`, is_new: true, tags: [] },
+          ],
+        });
+      },
+    };
+  }
+
   it("creates candidates and leaves wiki/ untouched", async () => {
     await writeFile(
       path.join(root.dir, "sources", "topic.md"),
       "# Topic\nA brief article about a single topic.",
     );
 
-    const llm = await import("../src/utils/llm.js");
-    const callSpy = vi.spyOn(llm, "callClaude").mockImplementation(async ({ tools }) => {
-      if (tools && tools.length > 0) {
-        return JSON.stringify({
-          concepts: [
-            { concept: "Topic", summary: "A topic.", is_new: true, tags: ["intro"] },
-          ],
-        });
-      }
-      return "## Topic\n\nThe page body for the topic.";
-    });
-
-    const result = await compileAndReport(root.dir, { review: true });
-    expect(callSpy).toHaveBeenCalled();
+    const llm = buildSingleConceptAdapter("Topic");
+    const result = await compileAndReport(root.dir, { review: true }, llm);
     expect(result.candidates ?? []).toHaveLength(1);
 
     // Pages on disk: only the candidate, never the wiki page.
@@ -232,12 +242,6 @@ describe("compile --review pipeline integration", () => {
 
   /**
    * End-to-end incremental-state regression test for Finding 1.
-   *
-   * Prior to the fix, `compile --review` skipped state.json writes entirely.
-   * That left every approved source still flagged "new" in change detection,
-   * so the next compile would regenerate the same candidate over and over.
-   * Approving a candidate must persist its source-state snapshot so the
-   * source is treated as "unchanged" on subsequent compiles.
    */
   it("does not regenerate a candidate for a source that was approved", async () => {
     await writeFile(
@@ -245,26 +249,16 @@ describe("compile --review pipeline integration", () => {
       "# Topic\nA brief article about a single topic.",
     );
 
-    const llm = await import("../src/utils/llm.js");
-    vi.spyOn(llm, "callClaude").mockImplementation(async ({ tools }) => {
-      if (tools && tools.length > 0) {
-        return JSON.stringify({
-          concepts: [
-            { concept: "Topic", summary: "A topic.", is_new: true, tags: [] },
-          ],
-        });
-      }
-      return VALID_BODY;
-    });
+    const llm = buildSingleConceptAdapter("Topic", () => VALID_BODY);
     vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const first = await compileAndReport(root.dir, { review: true });
+    const first = await compileAndReport(root.dir, { review: true }, llm);
     expect(first.candidates).toHaveLength(1);
 
     const candidateId = first.candidates![0];
     await reviewApproveCommand(candidateId);
 
-    const second = await compileAndReport(root.dir, { review: true });
+    const second = await compileAndReport(root.dir, { review: true }, llm);
     expect(second.candidates ?? []).toHaveLength(0);
     expect(second.compiled).toBe(0);
     expect(second.skipped).toBeGreaterThanOrEqual(1);
@@ -272,23 +266,16 @@ describe("compile --review pipeline integration", () => {
 
   /**
    * Regression test for the multi-candidate-per-source bug.
-   *
-   * When a single source yields multiple concepts (and therefore multiple
-   * candidates), approving the first candidate must NOT mark the source as
-   * fully compiled — otherwise the remaining pending candidates can never
-   * be regenerated, because the next compile sees the source as unchanged.
-   * Source-state is only persisted when the LAST candidate from that source
-   * is approved.
    */
   it("defers source-state persistence until every candidate from a source is approved", async () => {
     await writeFile(
       path.join(root.dir, "sources", "topic.md"),
       "# Topic\nA brief article covering two related concepts.",
     );
-    await stubMultiConceptLLM();
+    const llm = buildMultiConceptAdapter();
     vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const first = await compileAndReport(root.dir, { review: true });
+    const first = await compileAndReport(root.dir, { review: true }, llm);
     expect(first.candidates).toHaveLength(2);
 
     const [firstId, secondId] = first.candidates!;
@@ -298,15 +285,13 @@ describe("compile --review pipeline integration", () => {
     await reviewApproveCommand(secondId);
     expect(await readSourceState(root.dir, "topic.md")).toBeDefined();
 
-    const followup = await compileAndReport(root.dir, { review: true });
+    const followup = await compileAndReport(root.dir, { review: true }, llm);
     expect(followup.candidates ?? []).toHaveLength(0);
     expect(followup.compiled).toBe(0);
   });
 
   /**
-   * Regression test for Finding 2: `compile --review` must NOT mutate
-   * `wiki/concepts/*.md` even when sources are deleted. Orphan-marking is
-   * deferred to the next non-review compile pass.
+   * Regression test for Finding 2: `compile --review` must NOT mutate wiki/.
    */
   it("does not mark wiki pages orphaned when a source is deleted in review mode", async () => {
     await seedExistingPage(root.dir, "topic", ["topic"]);
@@ -335,24 +320,25 @@ async function readSourceState(
   return state.sources[sourceFile];
 }
 
-/** Stub the LLM so a single source extracts to TWO concepts (one body each). */
-async function stubMultiConceptLLM(): Promise<void> {
-  const llm = await import("../src/utils/llm.js");
+/** Build a mock LLMAdapter that extracts two concepts with distinct page bodies. */
+function buildMultiConceptAdapter(): LLMAdapter {
   let bodyCallCount = 0;
-  vi.spyOn(llm, "callClaude").mockImplementation(async ({ tools }) => {
-    if (tools && tools.length > 0) {
+  return {
+    async complete(): Promise<string> {
+      bodyCallCount += 1;
+      const title = bodyCallCount === 1 ? "Alpha" : "Beta";
+      const summary = bodyCallCount === 1 ? "First concept." : "Second concept.";
+      return buildValidPageBody(title, summary);
+    },
+    async toolCall(): Promise<string> {
       return JSON.stringify({
         concepts: [
           { concept: "Alpha", summary: "First concept.", is_new: true, tags: [] },
           { concept: "Beta", summary: "Second concept.", is_new: true, tags: [] },
         ],
       });
-    }
-    bodyCallCount += 1;
-    const title = bodyCallCount === 1 ? "Alpha" : "Beta";
-    const summary = bodyCallCount === 1 ? "First concept." : "Second concept.";
-    return buildValidPageBody(title, summary);
-  });
+    },
+  };
 }
 
 /** Compose a frontmatter+body page string that passes validateWikiPage. */

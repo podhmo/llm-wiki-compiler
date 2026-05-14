@@ -108,20 +108,9 @@ describe("ingest_source tool", () => {
 });
 
 describe("compile_wiki tool", () => {
-  it("returns CompileResult shape when no sources exist", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key-not-actually-used";
+  it("throws when no LLM adapter is configured", async () => {
     const server = buildServer();
-    const result = await callTool(server, "compile_wiki", {});
-    const payload = result.structuredContent?.result as Record<string, unknown>;
-
-    expect(payload).toEqual(expect.objectContaining({
-      compiled: expect.any(Number),
-      skipped: expect.any(Number),
-      deleted: expect.any(Number),
-      concepts: expect.any(Array),
-      pages: expect.any(Array),
-      errors: expect.any(Array),
-    }));
+    await expect(callTool(server, "compile_wiki", {})).rejects.toThrow(/LLM adapter not configured/);
   });
 });
 
@@ -223,28 +212,9 @@ describe("wiki_status tool", () => {
 });
 
 describe("error handling", () => {
-  it("query_wiki throws when wiki state is missing", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key";
+  it("query_wiki throws when LLM adapter is not configured", async () => {
     const server = buildServer();
-    await expect(callTool(server, "query_wiki", { question: "anything" })).rejects.toThrow(/index not found/);
-  });
-
-  it("compile_wiki surfaces missing-credential errors", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_AUTH_TOKEN;
-    const originalSettingsPath = process.env.LLMWIKI_CLAUDE_SETTINGS_PATH;
-    process.env.LLMWIKI_CLAUDE_SETTINGS_PATH = path.join(root, "no-such-settings.json");
-    const server = buildServer();
-
-    try {
-      await expect(callTool(server, "compile_wiki", {})).rejects.toThrow(/Anthropic credentials/);
-    } finally {
-      if (originalSettingsPath !== undefined) {
-        process.env.LLMWIKI_CLAUDE_SETTINGS_PATH = originalSettingsPath;
-      } else {
-        delete process.env.LLMWIKI_CLAUDE_SETTINGS_PATH;
-      }
-    }
+    await expect(callTool(server, "query_wiki", { question: "anything" })).rejects.toThrow(/LLM adapter not configured/);
   });
 });
 

@@ -14,7 +14,8 @@
 import { existsSync } from "fs";
 import path from "path";
 import { callClaude } from "../utils/llm.js";
-import type { LLMTool } from "../utils/provider.js";
+import type { ToolDefinition } from "../types/llm-adapter.js";
+import type { LLMAdapter } from "../types/llm-adapter.js";
 import { atomicWrite, safeReadFile, slugify, buildFrontmatter, parseFrontmatter } from "../utils/markdown.js";
 import { languageDirective } from "../utils/output-language.js";
 import { generateIndex } from "../compiler/indexgen.js";
@@ -40,7 +41,7 @@ import type { ChunkCitation, QueryResult, RetrievalDebug } from "../utils/types.
 const PAGE_DIRS = [CONCEPTS_DIR, QUERIES_DIR];
 
 /** Tool schema for page selection (provider-agnostic). */
-const PAGE_SELECTION_TOOL: LLMTool = {
+const PAGE_SELECTION_TOOL: ToolDefinition = {
   name: "select_pages",
   description: "Select the most relevant wiki pages to answer a question",
   input_schema: {
@@ -72,18 +73,20 @@ interface PageSelectionResult {
  * Select the most relevant wiki pages for a question using Claude tool_use.
  * @param question - The user's natural language question.
  * @param indexContent - The full text of wiki/index.md.
+ * @param llm - LLM adapter to use for the call.
  * @returns Parsed page slugs and reasoning from Claude.
  */
-export async function selectPages(
+async function selectPages(
   question: string,
   indexContent: string,
+  llm: LLMAdapter,
 ): Promise<PageSelectionResult> {
   const systemPrompt =
     "You are a knowledge base assistant. Given a question and a wiki index, select the most relevant pages.";
 
   const userMessage = `Question: ${question}\n\nWiki Index:\n${indexContent}`;
 
-  const rawResult = await callClaude({
+  const rawResult = await callClaude(llm, {
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
     tools: [PAGE_SELECTION_TOOL],
@@ -127,21 +130,22 @@ async function selectRelevantPages(
   root: string,
   question: string,
   debug: boolean,
+  llm: LLMAdapter,
 ): Promise<SelectedPages> {
-  const chunkSelection = await trySelectViaChunks(root, question, debug);
+  const chunkSelection = await trySelectViaChunks(root, question, debug, llm);
   if (chunkSelection) return chunkSelection;
 
   const candidates = await tryFindRelevantPages(root, question);
 
   if (candidates.length > 0) {
     const filteredIndex = buildFilteredIndex(candidates);
-    const { pages: rawPages, reasoning } = await selectPages(question, filteredIndex);
+    const { pages: rawPages, reasoning } = await selectPages(question, filteredIndex, llm);
     // Tool output holds slugs directly in the semantic path — no slugify needed.
     return { pages: rawPages, rawPages, reasoning, chunks: [] };
   }
 
   const indexContent = await safeReadFile(path.join(root, INDEX_FILE));
-  const { pages: rawPages, reasoning } = await selectPages(question, indexContent);
+  const { pages: rawPages, reasoning } = await selectPages(question, indexContent, llm);
   return { pages: rawPages.map((p) => slugify(p)), rawPages, reasoning, chunks: [] };
 }
 
@@ -153,6 +157,7 @@ async function trySelectViaChunks(
   root: string,
   question: string,
   debug: boolean,
+  llm: LLMAdapter,
 ): Promise<SelectedPages | null> {
   const ranked = await tryFindRelevantChunks(root, question);
   if (ranked.length === 0) return null;
@@ -166,6 +171,8 @@ async function trySelectViaChunks(
   const chunkCitations = toChunkCitations(kept);
   const pageSlugs = collapseToPages(chunkCitations, QUERY_PAGE_LIMIT);
   const reasoning = buildChunkReasoning(chunkCitations, pageSlugs);
+
+  void llm; // llm is threaded here for future chunk-level LLM calls
 
   return {
     pages: pageSlugs,
@@ -328,12 +335,13 @@ async function callAnswerLLM(
   question: string,
   pagesContent: string,
   chunks: ChunkCitation[],
+  llm: LLMAdapter,
   onToken?: (text: string) => void,
 ): Promise<string> {
   const provenance = chunks.length > 0 ? buildChunkProvenance(chunks) : "";
   const userMessage =
     `Question: ${question}\n\nRelevant wiki pages:\n${pagesContent}${provenance}`;
-  return callClaude({
+  return callClaude(llm, {
     system: buildAnswerSystemPrompt(),
     messages: [{ role: "user", content: userMessage }],
     stream: Boolean(onToken),
@@ -405,7 +413,7 @@ async function saveQueryPage(root: string, question: string, answer: string): Pr
 }
 
 /** Options for generateAnswer — programmatic-friendly. */
-interface GenerateAnswerOptions {
+export interface GenerateAnswerOptions {
   /** Persist the answer as a wiki query page when set. */
   save?: boolean;
   /** Per-token callback for streaming. Omit for non-streaming usage. */
@@ -423,19 +431,21 @@ interface GenerateAnswerOptions {
  *
  * @param root - Absolute path to the project root directory.
  * @param question - The natural language question to answer.
+ * @param llm - LLM adapter to use for page selection and answer generation.
  * @param options - Streaming + save behaviour controls.
  * @returns Answer text, selected slugs, reasoning, and saved slug if applicable.
  */
 export async function generateAnswer(
   root: string,
   question: string,
+  llm: LLMAdapter,
   options: GenerateAnswerOptions = {},
 ): Promise<QueryResult> {
   if (!existsSync(path.join(root, INDEX_FILE))) {
     throw new Error("Wiki index not found. Run `llmwiki compile` first.");
   }
 
-  const selection = await selectRelevantPages(root, question, Boolean(options.debug));
+  const selection = await selectRelevantPages(root, question, Boolean(options.debug), llm);
   options.onPageSelection?.(selection.pages, selection.reasoning);
 
   const pagesContent = await loadSelectedPages(root, selection.pages);
@@ -444,7 +454,7 @@ export async function generateAnswer(
     return buildEmptyResult(selection);
   }
 
-  const answer = await callAnswerLLM(question, pagesContent, selection.chunks, options.onToken);
+  const answer = await callAnswerLLM(question, pagesContent, selection.chunks, llm, options.onToken);
   const saved = options.save ? await saveQueryPage(root, question, answer) : undefined;
 
   return {
@@ -471,20 +481,30 @@ function buildEmptyResult(selection: SelectedPages): QueryResult {
  * @param root - Absolute path to the project root directory.
  * @param question - The natural language question to answer.
  * @param options - Command options (e.g. --save to persist the answer).
+ * @param llm - LLM adapter; required to generate an answer.
  */
 export default async function queryCommand(
   root: string,
   question: string,
   options: { save?: boolean; debug?: boolean },
+  llm?: LLMAdapter,
 ): Promise<void> {
   if (!existsSync(path.join(root, INDEX_FILE))) {
     output.status("!", output.error("Wiki index not found. Run `llmwiki compile` first."));
     return;
   }
 
+  if (!llm) {
+    output.status("!", output.error(
+      "LLM adapter not configured. Use createWikiCompiler({ llm }) to provide an adapter.",
+    ));
+    process.exit(1);
+    return;
+  }
+
   output.header("Selecting relevant pages");
 
-  const result = await generateAnswer(root, question, {
+  const result = await generateAnswer(root, question, llm, {
     save: options.save,
     debug: options.debug,
     onToken: (text) => process.stdout.write(text),

@@ -19,7 +19,6 @@
 import { readFile, readdir } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
-import { getProvider, getActiveProviderName } from "./provider.js";
 import { atomicWrite, safeReadFile, parseFrontmatter } from "./markdown.js";
 import {
   CONCEPTS_DIR,
@@ -33,6 +32,20 @@ import * as output from "./output.js";
 
 /** Current store version; bumped from 1 → 2 when chunk entries were added. */
 const STORE_VERSION = 2 as const;
+
+/**
+ * Stub embed function — embedding requires a provider with embed() support.
+ * Throws when called to signal that embeddings are not available without a
+ * configured embedding backend. Callers that use this indirectly (e.g.
+ * updateEmbeddings called from the compile pipeline) catch the error and
+ * skip embedding gracefully.
+ */
+async function embed(text: string): Promise<number[]> {
+  void text;
+  throw new Error(
+    "Embedding is not configured. Provide an LLM adapter with embed() support to enable semantic search.",
+  );
+}
 
 /** A single embedded page record. */
 export interface EmbeddingEntry {
@@ -145,7 +158,7 @@ export async function findRelevantPages(
   const store = await loadActiveStore(root, (s) => s.entries.length > 0);
   if (!store) return [];
 
-  const queryVec = await getProvider().embed(question);
+  const queryVec = await embed(question);
   return findTopK(queryVec, store, EMBEDDING_TOP_K).map((entry) => ({
     slug: entry.slug,
     title: entry.title,
@@ -164,7 +177,7 @@ export async function findRelevantChunks(
 ): Promise<Array<{ chunk: ChunkEmbeddingEntry; score: number }>> {
   const store = await loadActiveStore(root, (s) => Boolean(s.chunks && s.chunks.length > 0));
   if (!store) return [];
-  const queryVec = await getProvider().embed(question);
+  const queryVec = await embed(question);
   return findTopKChunks(queryVec, store.chunks ?? [], k);
 }
 
@@ -234,13 +247,12 @@ async function embedPages(
   records: PageRecord[],
   slugsToEmbed: Set<string>,
 ): Promise<EmbeddingEntry[]> {
-  const provider = getProvider();
   const now = new Date().toISOString();
   const fresh: EmbeddingEntry[] = [];
 
   for (const record of records) {
     if (!slugsToEmbed.has(record.slug)) continue;
-    const vector = await provider.embed(buildEmbeddingText(record));
+    const vector = await embed(buildEmbeddingText(record));
     fresh.push({
       slug: record.slug,
       title: record.title,
@@ -274,14 +286,11 @@ export function resetStaleEmbeddingWarnings(): void {
   warnedStaleModels.clear();
 }
 
-/** Choose the active embedding model name, defaulting to anthropic's voyage model. */
+/** Choose the active embedding model name, defaulting to the anthropic voyage model. */
 export function resolveEmbeddingModel(): string {
-  const providerName = getActiveProviderName();
   const configuredModel = process.env.LLMWIKI_EMBEDDING_MODEL?.trim();
-  if (configuredModel && (providerName === "openai" || providerName === "ollama")) {
-    return configuredModel;
-  }
-  return EMBEDDING_MODELS[providerName] ?? EMBEDDING_MODELS.anthropic;
+  if (configuredModel) return configuredModel;
+  return EMBEDDING_MODELS.anthropic;
 }
 
 /** Merge fresh embeddings into an existing store, dropping slugs not in liveSlugs. */
@@ -331,7 +340,6 @@ async function embedRecordChunks(
   forceAll: boolean,
   now: string,
 ): Promise<ChunkEmbeddingEntry[]> {
-  const provider = getProvider();
   const chunkTexts = splitIntoChunks(record.body);
   const out: ChunkEmbeddingEntry[] = [];
 
@@ -343,7 +351,7 @@ async function embedRecordChunks(
       out.push({ ...reused, title: record.title });
       continue;
     }
-    const vector = await provider.embed(text);
+    const vector = await embed(text);
     out.push({
       slug: record.slug, title: record.title, chunkIndex: i,
       contentHash, text, vector, updatedAt: now,

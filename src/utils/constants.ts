@@ -39,38 +39,6 @@ export const RETRY_COUNT = 3;
 export const RETRY_BASE_MS = 1000;
 export const RETRY_MULTIPLIER = 4;
 
-/** Default provider when LLMWIKI_PROVIDER is not set. */
-export const DEFAULT_PROVIDER = "anthropic";
-
-/** Default model per provider. */
-export const PROVIDER_MODELS: Record<string, string> = {
-  anthropic: "claude-sonnet-4-20250514",
-  openai: "gpt-4o",
-  ollama: "llama3.1",
-  minimax: "MiniMax-M2.7",
-  copilot: "gpt-4o",
-};
-
-/** Default Ollama API base URL. */
-export const OLLAMA_DEFAULT_HOST = "http://localhost:11434/v1";
-
-/** GitHub Copilot API base URL (OpenAI-compatible, requires OAuth token). */
-export const COPILOT_BASE_URL = "https://api.githubcopilot.com";
-
-/**
- * Default request timeout for cloud OpenAI-compatible providers (10 minutes).
- * Matches the OpenAI SDK's own default; called out here so it's explicit.
- */
-export const OPENAI_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
-
-/**
- * Default request timeout for Ollama (30 minutes). Local models on modest
- * hardware can take well over the cloud-provider default for a single
- * compile-time completion. Configurable via LLMWIKI_REQUEST_TIMEOUT_MS or
- * OLLAMA_TIMEOUT_MS env vars.
- */
-export const OLLAMA_DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
-
 /** Directory names relative to the project root. */
 export const SOURCES_DIR = "sources";
 export const CONCEPTS_DIR = "wiki/concepts";
@@ -88,9 +56,6 @@ export const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp
 
 /** Supported transcript file extensions (content-sniff .txt separately). */
 export const TRANSCRIPT_EXTENSIONS = new Set([".vtt", ".srt"]);
-
-/** Max tokens for image-description completions. */
-export const IMAGE_DESCRIBE_MAX_TOKENS = 2048;
 
 /** Pending review candidates awaiting approval/rejection. */
 export const CANDIDATES_DIR = ".llmwiki/candidates";

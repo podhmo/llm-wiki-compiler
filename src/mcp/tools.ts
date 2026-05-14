@@ -13,7 +13,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ingestSource } from "../commands/ingest.js";
 import { compileAndReport } from "../compiler/index.js";
-import { generateAnswer, selectPages } from "../commands/query.js";
+import { generateAnswer } from "../commands/query.js";
 import { lint } from "../linter/index.js";
 import { collectPageSummaries, scanWikiPages } from "../compiler/indexgen.js";
 import { detectChanges } from "../compiler/hasher.js";
@@ -135,9 +135,10 @@ function registerQueryTool(server: McpServer, root: string): void {
       },
     },
     async ({ question, save, debug }) => {
+      // ensureProviderAvailable() always throws after provider system removal.
+      // The MCP server will be removed in a subsequent issue.
       ensureProviderAvailable();
-      const result = await generateAnswer(root, question, { save, debug });
-      return jsonResult(result);
+      throw new Error("unreachable");
     },
   );
 }
@@ -184,9 +185,10 @@ async function pickSearchSlugs(root: string, question: string): Promise<string[]
     // Embeddings unavailable — fall through to index-based selection.
   }
 
-  const indexContent = await safeReadFile(path.join(root, INDEX_FILE));
-  const { pages } = await selectPages(question, indexContent);
-  return pages;
+  // TODO: selectPages requires an llm parameter; the MCP server will be removed
+  // in a subsequent issue. ensureProviderAvailable() throws before reaching here.
+  ensureProviderAvailable();
+  throw new Error("unreachable");
 }
 
 /** Deduplicate slugs while preserving the first-seen ordering. */

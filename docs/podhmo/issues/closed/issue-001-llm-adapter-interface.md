@@ -21,3 +21,15 @@ LLM 呼び出しを `string → string` に近い抽象で外部から注入可�
   - `toolCall?(options: { system: string; prompt: string; tools: ToolDefinition[]; maxTokens?: number }): Promise<string>` — オプション
 - `stream` / `toolCall` 未実装時は `complete` にフォールバックするヘルパーも用意
 - `WikiCompilerOptions` 型（`{ llm: LLMAdapter; root?: string }`）も同ファイルで定義
+
+Completed: 2026-05-14
+Model: claude-sonnet-4-5
+
+## 解決方法
+
+ を新規作成し、以下のインターフェースを定義した:
+- : （必須）・・ メソッドを持つ
+- : ツール呼び出し型定義
+- : 
+
+ の / フォールバックロジックは  で実装済み。

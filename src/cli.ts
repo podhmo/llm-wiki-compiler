@@ -1,14 +1,15 @@
 /**
  * CLI entry point for llmwiki — the knowledge compiler.
  *
- * Registers all commands (ingest, compile, query, watch, lint) via Commander.
- * Validates the correct API key for the selected LLM provider.
- * Designed for `npx llmwiki` or global install via `npm install -g llm-wiki-compiler`.
+ * Registers all commands (init, ingest, compile, query, lint, etc.) via Commander.
+ * LLM-dependent commands (compile, query) require a configured LLMAdapter supplied
+ * via createWikiCompiler() — see `llmwiki init` to generate a starter config.
  */
 
 import "dotenv/config";
 import { createRequire } from "module";
 import { Command } from "commander";
+import initCommand from "./commands/init.js";
 import ingestCommand from "./commands/ingest.js";
 import ingestSessionCommand from "./commands/ingest-session.js";
 import compileCommand from "./commands/compile.js";
@@ -22,8 +23,6 @@ import reviewShowCommand from "./commands/review-show.js";
 import reviewApproveCommand from "./commands/review-approve.js";
 import reviewRejectCommand from "./commands/review-reject.js";
 import { startMCPServer } from "./mcp/server.js";
-import { DEFAULT_PROVIDER } from "./utils/constants.js";
-import { resolveAnthropicAuthFromEnv } from "./utils/claude-settings.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -34,6 +33,18 @@ program
   .name("llmwiki")
   .description("The knowledge compiler — raw sources in, interlinked wiki out")
   .version(version);
+
+program
+  .command("init")
+  .description("Generate a llmwiki.config.ts starter template in the current directory")
+  .action(async () => {
+    try {
+      await initCommand();
+    } catch (err) {
+      console.error(`\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+  });
 
 program
   .command("ingest <source>")
@@ -73,7 +84,6 @@ program
   .action(async (options: { review?: boolean; lang?: string }) => {
     try {
       applyLanguageOption(options.lang);
-      requireProvider();
       await compileCommand({ review: options.review });
     } catch (err) {
       console.error(`\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`);
@@ -149,7 +159,6 @@ program
     ) => {
       try {
         applyLanguageOption(options.lang);
-        requireProvider();
         await queryCommand(process.cwd(), question, options);
       } catch (err) {
         console.error(`\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`);
@@ -163,7 +172,6 @@ program
   .description("Watch sources/ and auto-recompile on changes")
   .action(async () => {
     try {
-      requireProvider();
       await watchCommand();
     } catch (err) {
       console.error(`\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`);
@@ -251,50 +259,6 @@ program
 function applyLanguageOption(lang: string | undefined): void {
   if (lang && lang.trim().length > 0) {
     process.env.LLMWIKI_OUTPUT_LANG = lang.trim();
-  }
-}
-
-/** API key env var required per provider. Null means no key needed. */
-const PROVIDER_KEY_VARS: Record<string, string | null> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
-  ollama: null,
-  minimax: "MINIMAX_API_KEY",
-  copilot: "GITHUB_TOKEN",
-};
-
-/** Exit with a helpful message if the selected provider's API key is missing. */
-function requireProvider(): void {
-  const provider = process.env.LLMWIKI_PROVIDER ?? DEFAULT_PROVIDER;
-
-  if (provider === "anthropic") {
-    const auth = resolveAnthropicAuthFromEnv();
-    if (!auth.apiKey && !auth.authToken) {
-      console.error(
-        `\x1b[31mError:\x1b[0m Anthropic credentials are required for the "anthropic" provider.\n` +
-          `  Set one of: export ANTHROPIC_API_KEY=<your-key> OR export ANTHROPIC_AUTH_TOKEN=<your-token>`,
-      );
-      process.exit(1);
-    }
-    return;
-  }
-
-  const keyVar = PROVIDER_KEY_VARS[provider];
-
-  if (keyVar === undefined) {
-    console.error(
-      `\x1b[31mError:\x1b[0m Unknown provider "${provider}".\n` +
-        `  Supported: ${Object.keys(PROVIDER_KEY_VARS).join(", ")}`,
-    );
-    process.exit(1);
-  }
-
-  if (keyVar && !process.env[keyVar]) {
-    console.error(
-      `\x1b[31mError:\x1b[0m ${keyVar} environment variable is required for the "${provider}" provider.\n` +
-        `  Set it with: export ${keyVar}=<your-key>`,
-    );
-    process.exit(1);
   }
 }
 

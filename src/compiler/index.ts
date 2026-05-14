@@ -73,6 +73,7 @@ import type {
   WikiFrontmatter,
   WikiState,
 } from "../utils/types.js";
+import type { LLMAdapter } from "../types/llm-adapter.js";
 
 /** Per-source state snapshots keyed by source filename. */
 type SourceStateMap = Record<string, SourceState>;
@@ -83,14 +84,29 @@ function emptyCompileResult(): CompileResult {
 }
 
 /**
+ * Assert that an LLM adapter is provided, throwing a clear error if not.
+ * Used at the point of actual LLM calls so the compile pipeline can start
+ * without an adapter and only fails when LLM work is actually needed.
+ */
+function requireLLM(llm: LLMAdapter | undefined): LLMAdapter {
+  if (!llm) {
+    throw new Error(
+      "LLM adapter not configured. Use createWikiCompiler({ llm }) to provide an adapter.",
+    );
+  }
+  return llm;
+}
+
+/**
  * Run the full compilation pipeline with lock protection.
  * Acquires .llmwiki/lock, detects changes, compiles new/changed sources,
  * marks orphaned pages, resolves interlinks, and rebuilds the index.
  * @param root - Project root directory.
  * @param options - Optional pipeline overrides (e.g. --review mode).
+ * @param llm - LLM adapter; required when sources need to be compiled.
  */
-export async function compile(root: string, options: CompileOptions = {}): Promise<void> {
-  await compileAndReport(root, options);
+export async function compile(root: string, options: CompileOptions = {}, llm?: LLMAdapter): Promise<void> {
+  await compileAndReport(root, options, llm);
 }
 
 /**
@@ -100,11 +116,13 @@ export async function compile(root: string, options: CompileOptions = {}): Promi
  * meaningful data without scraping terminal output.
  * @param root - Project root directory.
  * @param options - Optional pipeline overrides (e.g. --review mode).
+ * @param llm - LLM adapter; required when sources need to be compiled.
  * @returns Structured result describing what was compiled.
  */
 export async function compileAndReport(
   root: string,
   options: CompileOptions = {},
+  llm?: LLMAdapter,
 ): Promise<CompileResult> {
   output.header("llmwiki compile");
 
@@ -118,7 +136,7 @@ export async function compileAndReport(
   }
 
   try {
-    return await runCompilePipeline(root, options);
+    return await runCompilePipeline(root, options, llm);
   } finally {
     await releaseLock(root);
   }
@@ -163,6 +181,7 @@ async function generatePagesPhase(
   frozenSlugs: Set<string>,
   schema: SchemaConfig,
   options: CompileOptions,
+  llm: LLMAdapter | undefined,
 ): Promise<PageGenerationResult> {
   const merged = mergeExtractions(extractions, frozenSlugs);
   // Build the per-source state snapshot once so each candidate can carry the
@@ -175,7 +194,7 @@ async function generatePagesPhase(
   const candidates: string[] = [];
   const pages = await Promise.all(
     merged.map((entry) => limit(async () => {
-      const result = await generateMergedPage(root, entry, schema, options, sourceStates);
+      const result = await generateMergedPage(root, entry, schema, options, sourceStates, llm);
       if (result.error) errors.push(result.error);
       if (result.candidateId) candidates.push(result.candidateId);
       return entry;
@@ -244,6 +263,7 @@ function summarizeCompile(
 async function runCompilePipeline(
   root: string,
   options: CompileOptions,
+  llm: LLMAdapter | undefined,
 ): Promise<CompileResult> {
   const schema = await loadSchema(root);
   reportSchemaStatus(schema);
@@ -264,7 +284,7 @@ async function runCompilePipeline(
         candidates: [],
         seedSlugs: [],
       };
-      await generateSeedPages(root, schema, emptyGeneration);
+      await generateSeedPages(root, schema, emptyGeneration, llm);
       // Rebuild index/MOC so the newly-written seed pages become discoverable,
       // and propagate any seed-page validation errors into the returned result.
       await finalizeWiki(root, emptyGeneration.pages, emptyGeneration.seedSlugs);
@@ -296,12 +316,12 @@ async function runCompilePipeline(
   const frozenSlugs = findFrozenSlugs(state, changes);
   reportFrozenSlugs(frozenSlugs);
 
-  const extractions = await runExtractionPhases(root, buckets.toCompile, state, changes);
+  const extractions = await runExtractionPhases(root, buckets.toCompile, state, changes, llm);
   if (!options.review) {
     await freezeFailedExtractions(root, extractions, frozenSlugs);
   }
 
-  const generation = await generatePagesPhase(root, extractions, frozenSlugs, schema, options);
+  const generation = await generatePagesPhase(root, extractions, frozenSlugs, schema, options, llm);
 
   if (!options.review) {
     await persistExtractionStates(root, extractions);
@@ -311,7 +331,7 @@ async function runCompilePipeline(
     await persistFrozenSlugs(root, frozenSlugs, extractions);
     // Seed pages write directly into wiki/, so skip them in review mode
     // to honour the "no wiki/ mutation" contract of that mode.
-    await generateSeedPages(root, schema, generation);
+    await generateSeedPages(root, schema, generation, llm);
     await finalizeWiki(root, generation.pages, generation.seedSlugs);
   }
   return summarizeCompile(buckets, generation, extractions, options);
@@ -359,16 +379,17 @@ async function runExtractionPhases(
   toCompile: SourceChange[],
   state: WikiState,
   allChanges: SourceChange[],
+  llm: LLMAdapter | undefined,
 ): Promise<ExtractionResult[]> {
   const extractions: ExtractionResult[] = [];
   for (const change of toCompile) {
-    extractions.push(await extractForSource(root, change.file));
+    extractions.push(await extractForSource(root, change.file, llm));
   }
 
   const lateAffected = findLateAffectedSources(extractions, state, allChanges);
   for (const file of lateAffected) {
     output.status("~", output.info(`${file} [shares concept with new source]`));
-    extractions.push(await extractForSource(root, file));
+    extractions.push(await extractForSource(root, file, llm));
   }
 
   return extractions;
@@ -427,13 +448,14 @@ function printChangesSummary(changes: SourceChange[]): void {
 async function extractForSource(
   root: string,
   sourceFile: string,
+  llm: LLMAdapter | undefined,
 ): Promise<ExtractionResult> {
   output.status("*", output.info(`Extracting: ${sourceFile}`));
 
   const sourcePath = path.join(root, SOURCES_DIR, sourceFile);
   const sourceContent = await readFile(sourcePath, "utf-8");
   const existingIndex = await safeReadFile(path.join(root, INDEX_FILE));
-  const concepts = await extractConcepts(sourceContent, existingIndex);
+  const concepts = await extractConcepts(sourceContent, existingIndex, llm);
 
   if (concepts.length > 0) {
     const names = concepts.map((c) => c.concept).join(", ");
@@ -571,8 +593,9 @@ async function generateMergedPage(
   schema: SchemaConfig,
   options: CompileOptions,
   sourceStates: SourceStateMap,
+  llm: LLMAdapter | undefined,
 ): Promise<MergedPageOutcome> {
-  const fullPage = await renderMergedPageContent(root, entry, schema);
+  const fullPage = await renderMergedPageContent(root, entry, schema, requireLLM(llm));
 
   if (options.review) {
     return await persistReviewCandidate(root, entry, fullPage, sourceStates, schema);
@@ -652,10 +675,11 @@ async function generateSeedPages(
   root: string,
   schema: SchemaConfig,
   generation: PageGenerationResult,
+  llm: LLMAdapter | undefined,
 ): Promise<void> {
   if (schema.seedPages.length === 0) return;
   for (const seed of schema.seedPages) {
-    const result = await generateSingleSeedPage(root, schema, seed);
+    const result = await generateSingleSeedPage(root, schema, seed, llm);
     if (result.error) {
       generation.errors.push(result.error);
       continue;
@@ -675,13 +699,14 @@ async function generateSingleSeedPage(
   root: string,
   schema: SchemaConfig,
   seed: SeedPage,
+  llm: LLMAdapter | undefined,
 ): Promise<SeedPageOutcome> {
   const slug = slugify(seed.title);
   const pagePath = path.join(root, CONCEPTS_DIR, `${slug}.md`);
   const relatedContent = await loadSeedRelatedPages(root, seed.relatedSlugs ?? []);
   const rule = schema.kinds[seed.kind];
   const system = buildSeedPagePrompt(seed, rule, relatedContent);
-  const pageBody = await callClaude({
+  const pageBody = await callClaude(requireLLM(llm), {
     system,
     messages: [{ role: "user", content: `Write the ${seed.kind} page titled "${seed.title}".` }],
   });
@@ -721,14 +746,16 @@ async function loadSeedRelatedPages(root: string, slugs: string[]): Promise<stri
  * Call Claude to extract concepts from a source document.
  * @param sourceContent - Full source document text.
  * @param existingIndex - Current wiki index for deduplication.
+ * @param llm - LLM adapter to use for the call.
  * @returns Parsed array of extracted concepts.
  */
 async function extractConcepts(
   sourceContent: string,
   existingIndex: string,
+  llm: LLMAdapter | undefined,
 ): Promise<ExtractedConcept[]> {
   const system = buildExtractionPrompt(sourceContent, existingIndex);
-  const rawOutput = await callClaude({
+  const rawOutput = await callClaude(requireLLM(llm), {
     system,
     messages: [{ role: "user", content: "Extract the key concepts from this source." }],
     tools: [CONCEPT_EXTRACTION_TOOL],

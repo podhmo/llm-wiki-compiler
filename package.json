@@ -33,6 +33,11 @@
   "bugs": {
     "url": "https://github.com/atomicmemory/llm-wiki-compiler/issues"
   },
+  "exports": {
+    ".": {
+      "import": "./dist/wiki-compiler.js"
+    }
+  },
   "files": [
     "dist/",
     "LICENSE",
@@ -42,7 +47,6 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@mozilla/readability": "^0.5.0",
     "chokidar": "^4.0.0",
@@ -50,7 +54,6 @@
     "dotenv": "^17.4.0",
     "js-yaml": "^4.1.1",
     "jsdom": "^25.0.0",
-    "openai": "^4.0.0",
     "p-limit": "^6.0.0",
     "pdf-parse": "^2.4.5",
     "turndown": "^7.2.0",

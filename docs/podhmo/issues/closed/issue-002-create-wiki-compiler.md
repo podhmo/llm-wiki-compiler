@@ -1,6 +1,8 @@
 # createWikiCompiler() ファクトリ関数を実装する
 
 Created: 2026-05-14
+Completed: 2026-05-14
+Model: claude-sonnet-4-5
 
 ## 概要
 
@@ -16,3 +18,10 @@ llm-wiki-compiler を「コマンドのインストール」ではなく「コ�
 - 引数: `WikiCompilerOptions`（`LLMAdapter` + オプション）
 - 戻り値: `{ compile, query }` のようなオブジェクト。各関数は注入された `LLMAdapter` を使って処理を行う
 - 既存の `compile()` / `generateAnswer()` のロジックをラップし、LLMAdapter 経由で LLM 呼び出しを行う形にする
+
+## 解決方法
+
+`src/wiki-compiler.ts` を新規作成し、`createWikiCompiler({ llm })` ファクトリ関数を実装した。
+戻り値は `{ compile, compileAndReport, query }` メソッドを持つオブジェクト。
+各メソッドは注入された `LLMAdapter` を `compileAndReport`・`generateAnswer` に渡して処理する。
+`package.json` の `exports` フィールドと `tsup.config.ts` に `src/wiki-compiler.ts` をエントリポイントとして追加した。

@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/cli.ts"],
+  entry: ["src/cli.ts", "src/wiki-compiler.ts"],
   format: ["esm"],
   target: "node24",
   outDir: "dist",

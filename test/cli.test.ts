@@ -8,39 +8,15 @@ async function cleanupDirectory(directory: string): Promise<void> {
   await rm(directory, { recursive: true, force: true });
 }
 
-async function runCompileWithoutSources(
-  suffix: string,
-  envOverrides: NodeJS.ProcessEnv,
-): Promise<string> {
+async function runCompileWithoutSources(suffix: string): Promise<string> {
   const cwd = path.join(tmpdir(), `llmwiki-test-${suffix}-${Date.now()}`);
   await mkdir(path.join(cwd, "sources"), { recursive: true });
   try {
-    const { stdout } = await exec("node", [CLI, "compile"], {
-      cwd,
-      env: { ...process.env, ...envOverrides },
-    });
+    const { stdout } = await exec("node", [CLI, "compile"], { cwd });
     return stdout;
   } finally {
     await cleanupDirectory(cwd);
   }
-}
-
-async function createCompileWorkspace(
-  suffix: string,
-  claudeSettingsContent?: string,
-): Promise<{ cwd: string; settingsPath?: string }> {
-  const cwd = path.join(tmpdir(), `llmwiki-test-${suffix}-${Date.now()}`);
-  await mkdir(path.join(cwd, "sources"), { recursive: true });
-
-  if (!claudeSettingsContent) {
-    return { cwd };
-  }
-
-  const claudeDir = path.join(cwd, ".claude");
-  const settingsPath = path.join(claudeDir, "settings.json");
-  await mkdir(claudeDir, { recursive: true });
-  await writeFile(settingsPath, claudeSettingsContent, "utf8");
-  return { cwd, settingsPath };
 }
 
 describe("CLI smoke tests", () => {
@@ -57,78 +33,29 @@ describe("CLI smoke tests", () => {
     expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
   }, 30_000);
 
-  it("compile fails without Anthropic credentials", async () => {
+  it("init creates llmwiki.config.ts", async () => {
+    const cwd = path.join(tmpdir(), `llmwiki-test-init-${Date.now()}`);
+    await mkdir(cwd, { recursive: true });
     try {
-      await exec("node", [CLI, "compile"], {
-        env: {
-          ...process.env,
-          ANTHROPIC_API_KEY: "",
-          ANTHROPIC_AUTH_TOKEN: "",
-          ANTHROPIC_BASE_URL: "http://localhost:11434",
-        },
-      });
-      expect.fail("should have thrown");
-    } catch (err: unknown) {
-      const error = err as { stderr?: string; code?: number };
-      // Should exit with non-zero or print an error
-      expect(error.code).not.toBe(0);
-    }
-  });
-
-  it("compile without sources works with ANTHROPIC_AUTH_TOKEN", async () => {
-    const stdout = await runCompileWithoutSources("compile-token", {
-      ANTHROPIC_AUTH_TOKEN: "dummy-token",
-      ANTHROPIC_API_KEY: "",
-    });
-    expect(stdout).not.toContain("ANTHROPIC_API_KEY");
-  }, 30_000);
-
-  it("compile without sources works with Claude settings auth-token fallback", async () => {
-    const workspace = await createCompileWorkspace(
-      "compile-claude-settings",
-      JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "fallback-token", ANTHROPIC_MODEL: "Kimi-2.5" } }),
-    );
-
-    try {
-      const { stdout } = await exec("node", [CLI, "compile"], {
-        cwd: workspace.cwd,
-        env: {
-          ...process.env,
-          ANTHROPIC_API_KEY: "",
-          ANTHROPIC_AUTH_TOKEN: "",
-          LLMWIKI_CLAUDE_SETTINGS_PATH: workspace.settingsPath,
-        },
-      });
-      expect(stdout).not.toContain("Anthropic credentials are required");
+      const { stdout } = await exec("node", [CLI, "init"], { cwd });
+      expect(stdout).toContain("llmwiki.config.ts");
     } finally {
-      await cleanupDirectory(workspace.cwd);
+      await cleanupDirectory(cwd);
     }
   }, 30_000);
 
-  it("compile reports malformed Claude settings with formatted CLI error", async () => {
-    const workspace = await createCompileWorkspace(
-      "compile-malformed-claude-settings",
-      "{ malformed-json",
-    );
-
+  it("init does not overwrite an existing config", async () => {
+    const cwd = path.join(tmpdir(), `llmwiki-test-init-existing-${Date.now()}`);
+    await mkdir(cwd, { recursive: true });
+    const configPath = path.join(cwd, "llmwiki.config.ts");
+    await writeFile(configPath, "// existing", "utf8");
     try {
-      await exec("node", [CLI, "compile"], {
-        cwd: workspace.cwd,
-        env: {
-          ...process.env,
-          ANTHROPIC_API_KEY: "",
-          ANTHROPIC_AUTH_TOKEN: "",
-          LLMWIKI_CLAUDE_SETTINGS_PATH: workspace.settingsPath,
-        },
-      });
-      expect.fail("should have thrown");
-    } catch (err: unknown) {
-      const error = err as { stderr?: string; code?: number };
-      expect(error.code).not.toBe(0);
-      expect(error.stderr ?? "").toContain("Error:");
-      expect(error.stderr ?? "").toContain("Failed to parse Claude settings");
+      // The "already exists" warning goes to stderr; stdout may be empty.
+      const result = await exec("node", [CLI, "init"], { cwd }).catch((e) => e);
+      const combined = (result.stdout ?? "") + (result.stderr ?? "");
+      expect(combined).toContain("already exists");
     } finally {
-      await cleanupDirectory(workspace.cwd);
+      await cleanupDirectory(cwd);
     }
   }, 30_000);
 
@@ -145,7 +72,7 @@ describe("CLI smoke tests", () => {
   }, 30_000);
 
   it("compile without sources does not show query hint", async () => {
-    const stdout = await runCompileWithoutSources("compile", { ANTHROPIC_API_KEY: "dummy" });
+    const stdout = await runCompileWithoutSources("compile");
     expect(stdout).not.toContain("Next: llmwiki query");
   }, 30_000);
 });

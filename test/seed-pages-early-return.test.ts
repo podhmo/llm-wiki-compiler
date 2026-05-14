@@ -21,21 +21,21 @@ import { existsSync } from "fs";
 import path from "path";
 import { compileAndReport } from "../src/compiler/index.js";
 import { CONCEPTS_DIR } from "../src/utils/constants.js";
+import type { LLMAdapter } from "../src/types/llm-adapter.js";
 import { useTempRoot } from "./fixtures/temp-root.js";
 
 const root = useTempRoot(["sources"]);
 
-/** Stub callClaude so seed-page body generation never hits the network. */
-async function stubLLMForSeedPage(seedTitle: string): Promise<void> {
-  const llm = await import("../src/utils/llm.js");
-  vi.spyOn(llm, "callClaude").mockImplementation(async ({ tools }) => {
-    if (tools && tools.length > 0) {
-      // Extraction call — return zero concepts (no source to extract from)
+/** Build a mock LLMAdapter for seed-page compilation. */
+function buildSeedPageAdapter(seedTitle: string): LLMAdapter {
+  return {
+    async complete(): Promise<string> {
+      return `## ${seedTitle}\n\nThis is a seed page overview.\n`;
+    },
+    async toolCall(): Promise<string> {
       return JSON.stringify({ concepts: [] });
-    }
-    // Seed-page body generation call
-    return `## ${seedTitle}\n\nThis is a seed page overview.\n`;
-  });
+    },
+  };
 }
 
 /** Write a schema declaring one overview seed page. */
@@ -66,9 +66,9 @@ async function runSeedPageCompile(
   options: { review?: boolean } = {},
 ): Promise<Awaited<ReturnType<typeof compileAndReport>>> {
   await writeSchemaWithSeedPage(root.dir, seedTitle);
-  await stubLLMForSeedPage(seedTitle);
+  const llm = buildSeedPageAdapter(seedTitle);
   vi.spyOn(console, "log").mockImplementation(() => {});
-  return compileAndReport(root.dir, options);
+  return compileAndReport(root.dir, options, llm);
 }
 
 describe("seed pages generated when no source files changed", () => {

@@ -1,6 +1,8 @@
 # callClaude() を LLMAdapter ラッパーに書き換える
 
 Created: 2026-05-14
+Completed: 2026-05-14
+Model: claude-sonnet-4-5
 
 ## 概要
 
@@ -19,3 +21,12 @@ Created: 2026-05-14
 - リトライロジック（exponential backoff）は残す
 - `stream` モードは `LLMAdapter.stream` があればそちらを使い、なければ `complete` にフォールバック
 - `tools` モードは `LLMAdapter.toolCall` があればそちらを使い、なければ `complete` にフォールバック
+
+## 解決方法
+
+`callClaude()` のシグネチャを `callClaude(llm: LLMAdapter, options: CallClaudeOptions)` に変更した。
+`getProvider()` 呼び出しを除去し、`dispatchLLMCall()` ヘルパーで `stream`/`toolCall`/`complete` を振り分ける実装に変更。
+リトライロジック（exponential backoff）は保持。
+`compiler/index.ts`・`commands/query.ts` 全体にわたって `llm: LLMAdapter | undefined` を貫通させ、
+`requireLLM(llm)` ヘルパーで LLM が未設定の場合に明確なエラーを投げる。
+`compile()`・`compileAndReport()` の公開シグネチャも `llm?: LLMAdapter` を追加した。
