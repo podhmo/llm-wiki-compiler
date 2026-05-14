@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> Personal fork of https://github.com/atomicstrata/llm-wiki-compiler — do not merge.
+
 # llmwiki
 
 A knowledge compiler CLI — raw sources in, interlinked wiki out.
