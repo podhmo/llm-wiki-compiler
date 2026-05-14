@@ -121,7 +121,7 @@ function failWithError(message: string): null {
  * @param root - Project root directory.
  * @param id - Candidate id to look up.
  */
-export async function loadCandidateOrFail(
+async function loadCandidateOrFail(
   root: string,
   id: string,
 ): Promise<ReviewCandidate | null> {
@@ -141,7 +141,7 @@ export async function loadCandidateOrFail(
  * @param id - Candidate id to load.
  * @returns The candidate if still present, or `null` after setting exit code 1.
  */
-export async function loadCandidateUnderLockOrFail(
+async function loadCandidateUnderLockOrFail(
   root: string,
   id: string,
 ): Promise<ReviewCandidate | null> {
@@ -187,7 +187,7 @@ function isValidCandidate(value: unknown): value is ReviewCandidate {
  * @param root - Project root directory.
  * @returns All pending review candidates.
  */
-export async function listCandidates(root: string): Promise<ReviewCandidate[]> {
+async function listCandidates(root: string): Promise<ReviewCandidate[]> {
   const dir = path.join(root, CANDIDATES_DIR);
   if (!existsSync(dir)) return [];
 
@@ -210,13 +210,13 @@ export async function listCandidates(root: string): Promise<ReviewCandidate[]> {
  * that disagree with what `review list` actually shows. Malformed JSON files
  * are skipped here exactly as they are by listCandidates.
  */
-export async function countCandidates(root: string): Promise<number> {
+async function countCandidates(root: string): Promise<number> {
   const candidates = await listCandidates(root);
   return candidates.length;
 }
 
 /** Remove a pending candidate from disk. Returns false when nothing existed to remove. */
-export async function deleteCandidate(root: string, id: string): Promise<boolean> {
+async function deleteCandidate(root: string, id: string): Promise<boolean> {
   const filePath = candidatePath(root, id);
   if (!existsSync(filePath)) return false;
   await unlink(filePath);
@@ -230,7 +230,7 @@ export async function deleteCandidate(root: string, id: string): Promise<boolean
  * @param id - Candidate id to archive.
  * @returns True when the candidate was found and archived.
  */
-export async function archiveCandidate(root: string, id: string): Promise<boolean> {
+async function archiveCandidate(root: string, id: string): Promise<boolean> {
   const sourcePath = candidatePath(root, id);
   if (!existsSync(sourcePath)) return false;
 

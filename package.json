@@ -47,10 +47,8 @@
     "node": ">=24"
   },
   "dependencies": {
-    "chokidar": "^4.0.0",
     "commander": "^13.0.0",
-    "js-yaml": "^4.1.1",
-    "p-limit": "^6.0.0"
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
     "@copilotkit/aimock": "^1.15.1",

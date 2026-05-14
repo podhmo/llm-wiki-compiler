@@ -8,24 +8,13 @@ async function cleanupDirectory(directory: string): Promise<void> {
   await rm(directory, { recursive: true, force: true });
 }
 
-async function runCompileWithoutSources(suffix: string): Promise<string> {
-  const cwd = path.join(tmpdir(), `llmwiki-test-${suffix}-${Date.now()}`);
-  await mkdir(path.join(cwd, "sources"), { recursive: true });
-  try {
-    const { stdout } = await exec("node", [CLI, "compile"], { cwd });
-    return stdout;
-  } finally {
-    await cleanupDirectory(cwd);
-  }
-}
-
 describe("CLI smoke tests", () => {
   it("prints help and exits 0", async () => {
     const { stdout } = await exec("node", [CLI, "--help"]);
     expect(stdout).toContain("llmwiki");
     expect(stdout).toContain("ingest");
-    expect(stdout).toContain("compile");
-    expect(stdout).toContain("query");
+    expect(stdout).toContain("lint");
+    expect(stdout).toContain("export");
   }, 30_000);
 
   it("prints version", async () => {
@@ -69,10 +58,5 @@ describe("CLI smoke tests", () => {
     } finally {
       await cleanupDirectory(cwd);
     }
-  }, 30_000);
-
-  it("compile without sources does not show query hint", async () => {
-    const stdout = await runCompileWithoutSources("compile");
-    expect(stdout).not.toContain("Next: llmwiki query");
   }, 30_000);
 });

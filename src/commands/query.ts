@@ -17,7 +17,6 @@ import { callClaude } from "../utils/llm.js";
 import type { ToolDefinition } from "../types/llm-adapter.js";
 import type { LLMAdapter } from "../types/llm-adapter.js";
 import { atomicWrite, safeReadFile, slugify, buildFrontmatter, parseFrontmatter } from "../utils/markdown.js";
-import { languageDirective } from "../utils/output-language.js";
 import { generateIndex } from "../compiler/indexgen.js";
 import * as output from "../utils/output.js";
 import {
@@ -25,16 +24,7 @@ import {
   INDEX_FILE,
   CONCEPTS_DIR,
   QUERIES_DIR,
-  CHUNK_TOP_K,
-  CHUNK_RERANK_KEEP,
 } from "../utils/constants.js";
-import {
-  findRelevantPages,
-  findRelevantChunks,
-  updateEmbeddings,
-  type ChunkEmbeddingEntry,
-} from "../utils/embeddings.js";
-import { rerankWithBm25 } from "../utils/retrieval.js";
 import type { ChunkCitation, QueryResult, RetrievalDebug } from "../utils/types.js";
 
 /** Directories to search when loading selected pages, in priority order. */
@@ -123,159 +113,19 @@ interface SelectedPages {
 }
 
 /**
- * Pick relevant pages using a chunk-aware embedding pre-filter when available,
- * falling back to page-level embeddings, then to sending the full wiki index.
+ * Pick relevant pages by sending the full wiki index to the LLM for selection.
+ * Previously supported chunk-level and page-level embedding pre-filters;
+ * those were removed along with the embeddings subsystem (issue-011).
  */
 async function selectRelevantPages(
   root: string,
   question: string,
-  debug: boolean,
+  _debug: boolean,
   llm: LLMAdapter,
 ): Promise<SelectedPages> {
-  const chunkSelection = await trySelectViaChunks(root, question, debug, llm);
-  if (chunkSelection) return chunkSelection;
-
-  const candidates = await tryFindRelevantPages(root, question);
-
-  if (candidates.length > 0) {
-    const filteredIndex = buildFilteredIndex(candidates);
-    const { pages: rawPages, reasoning } = await selectPages(question, filteredIndex, llm);
-    // Tool output holds slugs directly in the semantic path — no slugify needed.
-    return { pages: rawPages, rawPages, reasoning, chunks: [] };
-  }
-
   const indexContent = await safeReadFile(path.join(root, INDEX_FILE));
   const { pages: rawPages, reasoning } = await selectPages(question, indexContent, llm);
   return { pages: rawPages.map((p) => slugify(p)), rawPages, reasoning, chunks: [] };
-}
-
-/**
- * Attempt chunk-level retrieval + reranking. Returns null when no chunk store
- * is available (caller falls back to page-level retrieval transparently).
- */
-async function trySelectViaChunks(
-  root: string,
-  question: string,
-  debug: boolean,
-  llm: LLMAdapter,
-): Promise<SelectedPages | null> {
-  const ranked = await tryFindRelevantChunks(root, question);
-  if (ranked.length === 0) return null;
-
-  const reranked = rerankWithBm25(
-    question,
-    ranked.map(({ chunk, score }) => ({ text: chunk.text, baseScore: score, chunk })),
-  );
-  const kept = reranked.slice(0, CHUNK_RERANK_KEEP);
-  const reorderingHappened = wasReordered(ranked, kept.map((k) => k.candidate.chunk));
-  const chunkCitations = toChunkCitations(kept);
-  const pageSlugs = collapseToPages(chunkCitations, QUERY_PAGE_LIMIT);
-  const reasoning = buildChunkReasoning(chunkCitations, pageSlugs);
-
-  void llm; // llm is threaded here for future chunk-level LLM calls
-
-  return {
-    pages: pageSlugs,
-    rawPages: pageSlugs,
-    reasoning,
-    chunks: chunkCitations,
-    debug: debug ? buildDebug(chunkCitations, pageSlugs, reorderingHappened) : undefined,
-  };
-}
-
-/** Detect whether reranking actually changed the chunk order. */
-function wasReordered(
-  before: Array<{ chunk: ChunkEmbeddingEntry }>,
-  after: ChunkEmbeddingEntry[],
-): boolean {
-  const limit = Math.min(before.length, after.length);
-  for (let i = 0; i < limit; i++) {
-    if (before[i].chunk !== after[i]) return true;
-  }
-  return false;
-}
-
-interface RankedChunk {
-  candidate: { chunk: ChunkEmbeddingEntry };
-  score: number;
-}
-
-/** Convert reranked candidates into citation records consumed downstream. */
-function toChunkCitations(ranked: RankedChunk[]): ChunkCitation[] {
-  return ranked.map(({ candidate, score }) => ({
-    slug: candidate.chunk.slug,
-    title: candidate.chunk.title,
-    chunkIndex: candidate.chunk.chunkIndex,
-    score,
-    text: candidate.chunk.text,
-  }));
-}
-
-/** Collapse chunk citations down to a deduplicated list of parent page slugs. */
-function collapseToPages(chunks: ChunkCitation[], limit: number): string[] {
-  const slugs: string[] = [];
-  const seen = new Set<string>();
-  for (const chunk of chunks) {
-    if (seen.has(chunk.slug)) continue;
-    seen.add(chunk.slug);
-    slugs.push(chunk.slug);
-    if (slugs.length >= limit) break;
-  }
-  return slugs;
-}
-
-/** Human-readable reasoning trail for the chunk-driven selection. */
-function buildChunkReasoning(chunks: ChunkCitation[], pages: string[]): string {
-  const top = chunks.slice(0, pages.length);
-  const summary = top.map((c) => `${c.slug}#${c.chunkIndex} (${c.score.toFixed(3)})`).join(", ");
-  return `Selected ${pages.length} page(s) from ${chunks.length} reranked chunks: ${summary}`;
-}
-
-/** Snapshot used by debug mode — pure data, no side-effects. */
-function buildDebug(
-  chunks: ChunkCitation[],
-  pageSlugs: string[],
-  reranked: boolean,
-): RetrievalDebug {
-  const bestPerPage = new Map<string, number>();
-  for (const c of chunks) {
-    const prev = bestPerPage.get(c.slug);
-    if (prev === undefined || c.score > prev) bestPerPage.set(c.slug, c.score);
-  }
-  return {
-    pages: pageSlugs.map((slug) => ({ slug, score: bestPerPage.get(slug) ?? 0 })),
-    chunks,
-    usedChunks: true,
-    reranked,
-  };
-}
-
-/** Chunk-level candidate lookup that never throws. */
-async function tryFindRelevantChunks(
-  root: string,
-  question: string,
-): Promise<Array<{ chunk: ChunkEmbeddingEntry; score: number }>> {
-  try {
-    return await findRelevantChunks(root, question, CHUNK_TOP_K);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    output.status("!", output.dim(`Chunk pre-filter unavailable (${message}); falling back.`));
-    return [];
-  }
-}
-
-/** Embedding-based candidate lookup that never throws. */
-async function tryFindRelevantPages(
-  root: string,
-  question: string,
-): Promise<Array<{ slug: string; title: string; summary: string }>> {
-  try {
-    return await findRelevantPages(root, question);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    output.status("!", output.dim(`Semantic pre-filter unavailable (${message}); using full index.`));
-    return [];
-  }
 }
 
 /**
@@ -310,19 +160,19 @@ export async function loadSelectedPages(root: string, slugs: string[]): Promise<
   return sections.join("\n\n");
 }
 
-/** Base system prompt body. The output-language directive is appended at call time. */
+/** Base system prompt for answer generation. */
 const ANSWER_SYSTEM_PROMPT_BASE =
   "You are a knowledge assistant. Answer the question using ONLY the wiki content provided. " +
   "Cite specific pages using [[Page Title]] wikilinks. " +
   "If the wiki doesn't contain enough information, say so.";
 
 /**
- * Build the answer-generation system prompt, appending the configured
- * output-language directive when present (issue #37).
+ * Build the answer-generation system prompt.
+ * Previously appended an output-language directive; that feature was
+ * removed with output-language.ts (issue-011).
  */
 function buildAnswerSystemPrompt(): string {
-  const lang = languageDirective();
-  return lang ? `${ANSWER_SYSTEM_PROMPT_BASE} ${lang}` : ANSWER_SYSTEM_PROMPT_BASE;
+  return ANSWER_SYSTEM_PROMPT_BASE;
 }
 
 /**
@@ -400,15 +250,6 @@ async function saveQueryPage(root: string, question: string, answer: string): Pr
   // by the next query's page-selection step.
   await generateIndex(root);
 
-  // Index the new query so semantic search retrieves it on the next question.
-  // Non-critical: embedding failures (e.g. missing VOYAGE_API_KEY) don't block save.
-  try {
-    await updateEmbeddings(root, [slug]);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    output.status("!", output.warn(`Skipped embeddings update: ${message}`));
-  }
-
   return slug;
 }
 
@@ -483,7 +324,7 @@ function buildEmptyResult(selection: SelectedPages): QueryResult {
  * @param options - Command options (e.g. --save to persist the answer).
  * @param llm - LLM adapter; required to generate an answer.
  */
-export default async function queryCommand(
+async function queryCommand(
   root: string,
   question: string,
   options: { save?: boolean; debug?: boolean },

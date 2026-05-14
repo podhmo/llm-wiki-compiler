@@ -11,8 +11,7 @@
  *
  * Intentionally distinct from the schema layer's `PageKind`
  * (concept/entity/comparison/overview) — this is a filesystem location, not
- * a semantic typology. Renaming avoids field collision when JSON export and
- * schema metadata are consumed by the same downstream tooling.
+ * a semantic typology.
  */
 export type PageDirectory = "concepts" | "queries";
 
@@ -40,30 +39,15 @@ export interface ExportPage {
   body: string;
 }
 
-/**
- * Source filter for marp export: which page kinds to include.
- * "all" includes both concepts and queries (the default).
- */
-export type MarpSource = "concepts" | "queries" | "all";
-
-/** All recognised marp source values — used for validation. */
-export const MARP_SOURCES: readonly MarpSource[] = ["concepts", "queries", "all"];
-
 /** Supported export target identifiers. */
 export type ExportTarget =
   | "llms-txt"
   | "llms-full-txt"
-  | "json"
-  | "json-ld"
-  | "graphml"
-  | "marp";
+  | "json";
 
 /** All recognised export target names — used for validation. */
 export const EXPORT_TARGETS: readonly ExportTarget[] = [
   "llms-txt",
   "llms-full-txt",
   "json",
-  "json-ld",
-  "graphml",
-  "marp",
 ];
